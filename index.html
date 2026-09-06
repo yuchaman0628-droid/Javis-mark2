@@ -16,7 +16,38 @@
       justify-content: center;
       min-height: 100vh;
       overflow: hidden;
+      position: relative;
     }
+
+    /* 目が開く（アイ・オープニング）アニメーション用の瞼（まぶた）オーバーレイ */
+    .eye-shutter {
+      position: fixed;
+      left: 0;
+      width: 100%;
+      height: 50vh;
+      background-color: #02050a;
+      z-index: 9999;
+      transition: transform 1.5s cubic-bezier(0.77, 0, 0.175, 1);
+      pointer-events: none;
+    }
+    .eye-shutter.top {
+      top: 0;
+      border-bottom: 2px solid #00f3ff;
+      box-shadow: 0 5px 20px rgba(0, 243, 255, 0.5);
+    }
+    .eye-shutter.bottom {
+      bottom: 0;
+      border-top: 2px solid #00f3ff;
+      box-shadow: 0 -5px 20px rgba(0, 243, 255, 0.5);
+    }
+    /* 目が開いた状態のスタイル */
+    body.eye-open .eye-shutter.top {
+      transform: translateY(-100%);
+    }
+    body.eye-open .eye-shutter.bottom {
+      transform: translateY(100%);
+    }
+
     /* HUD リアクターアニメーション */
     .hud-container {
       position: relative;
@@ -62,6 +93,7 @@
       border-radius: 8px;
       padding: 1.5rem;
       box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+      z-index: 10;
     }
     .status {
       font-size: 0.75rem;
@@ -117,6 +149,7 @@
       display: none;
       overflow: hidden;
       box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+      z-index: 10;
     }
     .camera-stream {
       width: 100%;
@@ -130,6 +163,10 @@
 </head>
 <body>
 
+  <!-- 目が開くアニメーション構造 -->
+  <div class="eye-shutter top"></div>
+  <div class="eye-shutter bottom"></div>
+
   <div class="hud-container">
     <div class="outer-ring"></div>
     <div class="inner-ring"></div>
@@ -137,8 +174,8 @@
   </div>
 
   <div class="console">
-    <div class="status" id="status">SYSTEM ONLINE // READY</div>
-    <div class="display-text" id="display">「システム起動完了。サー、どのようなご用件でしょうか？」</div>
+    <div class="status" id="status">SLEEP MODE // SAY 'HELLO JAVIS'</div>
+    <div class="display-text" id="display">「スリープモード中。マイクを押して『HELLO JAVIS』と呼びかけてください。」</div>
     <div class="input-group">
       <input type="text" id="userInput" placeholder="コマンドを入力、またはマイクを押してください...">
       <button onclick="startVoiceRecognition()" title="音声入力">🎤</button>
@@ -148,38 +185,39 @@
 
   <!-- カメラ映像エリア -->
   <div class="camera-container" id="camera-container">
-    <video class="camera-stream" id="camera-stream" autoplay playsinline></video>
+    <video class="camera-stream" id="camera-stream" autoplay playsinline muted></video>
   </div>
 
   <script>
     // グローバル変数
     let currentStream = null;
     let currentFacingMode = 'user';
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
 
-    // AI風音声読み上げ機能（トーン・ピッチ・ボイス選択を調整）
+    // AI風音声読み上げ機能
     function speak(text) {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'ja-JP';
 
-        // 利用可能な音声からAI/システム風の音声を選択
         const voices = window.speechSynthesis.getVoices();
         const aiVoice = voices.find(v => v.lang.includes('ja') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Keita') || v.name.includes('Ichiro')));
         if (aiVoice) utterance.voice = aiVoice;
 
-        utterance.pitch = 0.85; // 少し低めのクールなトーン
-        utterance.rate = 1.05;  // スムーズなスピード
+        utterance.pitch = 0.85;
+        utterance.rate = 1.05;
         window.speechSynthesis.speak(utterance);
       }
     }
 
-    // ブラウザの音声一覧ロード対策
     if ('speechSynthesis' in window) {
       window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); };
     }
 
-    // 日付情報取得（追加）
+    // 日付情報取得
     function getDateInfo() {
       const now = new Date();
       const year = now.getFullYear();
@@ -190,7 +228,7 @@
       return `本日の日付は ${year}年${month}月${date}日 ${dayName}曜日です。`;
     }
 
-    // バッテリー残量取得（追加）
+    // バッテリー残量取得
     async function getBatteryInfo() {
       if ('getBattery' in navigator) {
         try {
@@ -228,27 +266,60 @@
       }
     }
 
-    // カメラ起動・制御機能
+    // 目が開くアニメーション ＋ カメラ起動処理（確実な起動への改善）
+    async function openEyeAndStartCamera() {
+      document.body.classList.add('eye-open'); // 目が開くアニメーション発動
+      const success = await startCamera(currentFacingMode);
+      return success;
+    }
+
+    // カメラ起動・制御機能（エラー修正・互換性強化）
     async function startCamera(facingMode) {
       const videoEl = document.getElementById('camera-stream');
       const cameraContainerEl = document.getElementById('camera-container');
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("お使いのブラウザ環境ではカメラアクセスがサポートされていないか、SSL(https)接続されていません。");
+        return false;
+      }
 
       if (currentStream) {
         currentStream.getTracks().forEach(track => track.stop());
       }
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facingMode }
-        });
+        const constraints = {
+          video: {
+            facingMode: facingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         videoEl.srcObject = stream;
         cameraContainerEl.style.display = "block";
         currentStream = stream;
         currentFacingMode = facingMode;
+        
+        // 明示的に再生を開始
+        await videoEl.play();
         return true;
       } catch (e) {
-        cameraContainerEl.style.display = "none";
-        return false;
+        console.error("Camera Access Error: ", e);
+        // フォールバック: 単純な video: true で再試行
+        try {
+          const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          videoEl.srcObject = fallbackStream;
+          cameraContainerEl.style.display = "block";
+          currentStream = fallbackStream;
+          await videoEl.play();
+          return true;
+        } catch (err) {
+          cameraContainerEl.style.display = "none";
+          return false;
+        }
       }
     }
 
@@ -260,7 +331,69 @@
       return await startCamera(facingMode);
     }
 
-    // 音声認識（操作）機能
+    // 写真撮影機能
+    async function takePhoto() {
+      if (!currentStream) {
+        const success = await openEyeAndStartCamera();
+        if (!success) return false;
+        await new Promise(r => setTimeout(r, 800));
+      }
+      
+      const videoEl = document.getElementById('camera-stream');
+      const canvas = document.createElement('canvas');
+      canvas.width = videoEl.videoWidth || 640;
+      canvas.height = videoEl.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+      const link = document.createElement('a');
+      link.download = `jarvis_photo_${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      return true;
+    }
+
+    // 動画録画開始機能
+    async function startRecording() {
+      if (isRecording) return "RECORDING_ALREADY";
+      if (!currentStream) {
+        const success = await openEyeAndStartCamera();
+        if (!success) return "CAMERA_ERROR";
+        await new Promise(r => setTimeout(r, 800));
+      }
+
+      recordedChunks = [];
+      try {
+        mediaRecorder = new MediaRecorder(currentStream);
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) recordedChunks.push(event.data);
+        };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `jarvis_video_${Date.now()}.webm`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        return "SUCCESS";
+      } catch (e) {
+        return "ERROR";
+      }
+    }
+
+    // 動画録画停止機能
+    function stopRecording() {
+      if (!isRecording || !mediaRecorder) return false;
+      mediaRecorder.stop();
+      isRecording = false;
+      return true;
+    }
+
+    // 音声認識機能
     function startVoiceRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
@@ -282,7 +415,7 @@
       };
 
       recognition.onerror = () => {
-        statusEl.innerText = "SYSTEM ONLINE // READY";
+        statusEl.innerText = isRecording ? "RECORDING VIDEO..." : (document.body.classList.contains('eye-open') ? "SYSTEM ONLINE // READY" : "SLEEP MODE // SAY 'HELLO JAVIS'");
       };
 
       recognition.start();
@@ -302,8 +435,16 @@
       inputEl.value = "";
 
       let response = "申し訳ありません。そのコマンドは現在のプロトコルに登録されていません。";
+      const queryUpper = query.toUpperCase();
 
-      if (query.includes("こんにちは") || query.includes("起動")) {
+      // 新規追加: 「HELLO JAVIS」による目が開く演出＋カメラ起動
+      if (queryUpper.includes("HELLO JAVIS") || queryUpper.includes("HELLO JARVIS") || query.includes("ハロー") || query.includes("ジャービス") || query.includes("ジャビス")) {
+        statusEl.innerText = "WAKING UP // INITIALIZING CAMERA...";
+        const success = await openEyeAndStartCamera();
+        response = success 
+          ? "ハロー、サー。システムを起動し、アイズ・オープン。カメラを開始しました。" 
+          : "ハロー、サー。システムを起動しました。カメラアクセスの確認をお願いします。";
+      } else if (query.includes("こんにちは") || query.includes("起動")) {
         response = "こんにちは、サー。すべてのシステムは正常に稼働しています。";
       } else if (query.includes("誰") || query.includes("名前")) {
         response = "私はJ.A.R.V.I.S.、あなたのAIアシスタントです。";
@@ -311,13 +452,27 @@
         const now = new Date();
         response = `現在の時刻は ${now.getHours()}時${now.getMinutes()}分です。`;
       } else if (query.includes("日付") || query.includes("今日") || query.includes("カレンダー")) {
-        // 日付コマンド（追加）
         response = getDateInfo();
       } else if (query.includes("バッテリー") || query.includes("電池") || query.includes("残量")) {
-        // バッテリー残量コマンド（追加）
         response = await getBatteryInfo();
+      } else if (query.includes("写真") || query.includes("パシャ") || query.includes("撮影")) {
+        statusEl.innerText = "CAPTURING IMAGE...";
+        const success = await takePhoto();
+        response = success ? "了解、写真を撮影し端末に保存しました。" : "カメラへのアクセスエラーにより撮影に失敗しました。";
+      } else if ((query.includes("録画") || query.includes("動画")) && (query.includes("停止") || query.includes("止めて") || query.includes("ストップ"))) {
+        const success = stopRecording();
+        response = success ? "録画を停止しました。動画ファイルを保存します。" : "現在録画は行われていません。";
+      } else if (query.includes("録画") || (query.includes("動画") && (query.includes("撮影") || query.includes("撮って")))) {
+        const res = await startRecording();
+        if (res === "SUCCESS") {
+          statusEl.innerText = "RECORDING VIDEO...";
+          response = "了解、動画の録画を開始します。停止するには「録画停止」とお知らせください。";
+        } else if (res === "RECORDING_ALREADY") {
+          response = "現在すでに動画を録画中です。";
+        } else {
+          response = "カメラへのアクセスエラーにより録画の開始に失敗しました。";
+        }
       } else if (query.includes("読み上げて") || query.includes("喋って") || query.includes("言って")) {
-        // 任意の文字を読み上げるコマンド（追加）
         let readText = query.replace(/読み上げて|喋って|言って/g, "").replace(/と|を/g, "").trim();
         response = readText ? readText : "何を読み上げればよろしいでしょうか？";
       } else if (query.includes("天気")) {
@@ -325,7 +480,7 @@
         response = `${weatherInfo} スーツの飛行テストの参考にしてください。`;
       } else if (query.includes("カメラ") && (query.includes("起動") || query.includes("つけて"))) {
         statusEl.innerText = "ACCESSING CAMERA...";
-        const success = await startCamera('user');
+        const success = await openEyeAndStartCamera();
         response = success ? "了解、カメラを起動します。" : "申し訳ありません、カメラへのアクセスが拒否されました。";
       } else if (query.includes("インカメラ") || query.includes("内側カメラ")) {
         statusEl.innerText = "SWITCHING CAMERA...";
@@ -349,7 +504,11 @@
 
       setTimeout(() => {
         displayEl.innerText = response;
-        statusEl.innerText = (query.includes("カメラ") && startCamera) ? "CAMERA ACTIVE" : "SYSTEM ONLINE // READY";
+        if (isRecording) {
+          statusEl.innerText = "RECORDING VIDEO...";
+        } else {
+          statusEl.innerText = currentStream ? "CAMERA ACTIVE" : "SYSTEM ONLINE // READY";
+        }
         speak(response);
       }, 400);
     }
