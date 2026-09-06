@@ -96,7 +96,7 @@
       background: #00f3ff;
       color: #050b14;
       border: none;
-      padding: 10px 20px;
+      padding: 10px 15px;
       font-weight: bold;
       border-radius: 4px;
       cursor: pointer;
@@ -123,7 +123,8 @@
     <div class="status" id="status">SYSTEM ONLINE // READY</div>
     <div class="display-text" id="display">「システム起動完了。サー、どのようなご用件でしょうか？」</div>
     <div class="input-group">
-      <input type="text" id="userInput" placeholder="コマンドを入力してください...">
+      <input type="text" id="userInput" placeholder="コマンドを入力、またはマイクを押してください...">
+      <button onclick="startVoiceRecognition()" title="音声入力">🎤</button>
       <button onclick="processInput()">送信</button>
     </div>
   </div>
@@ -141,8 +142,59 @@
       }
     }
 
-    // 入力処理と簡易応答ロジック
-    function processInput() {
+    // 実際の気象データ取得 (Open-Meteo APIを使用)
+    async function fetchWeather() {
+      try {
+        // 東京の緯度経度からリアルタイム天気を取得
+        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&current_weather=true&timezone=Asia%2FTokyo");
+        const data = await res.json();
+        const temp = Math.round(data.current_weather.temperature);
+        const code = data.current_weather.weathercode;
+        
+        let weatherDesc = "晴れ";
+        if (code === 0) weatherDesc = "快晴";
+        else if ([1, 2, 3].includes(code)) weatherDesc = "晴れ時々曇り";
+        else if ([45, 48].includes(code)) weatherDesc = "霧";
+        else if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) weatherDesc = "雨";
+        else if ([71, 73, 75, 77, 85, 86].includes(code)) weatherDesc = "雪";
+        else if ([95, 96, 99].includes(code)) weatherDesc = "雷雨";
+
+        return `現在の東京の天気は${weatherDesc}、気温は${temp}度です。`;
+      } catch (e) {
+        return "申し訳ありません、気象データの取得に失敗しました。";
+      }
+    }
+
+    // 音声認識（操作）機能
+    function startVoiceRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("お使いのブラウザは音声認識に対応していません。Google Chrome等をご利用ください。");
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'ja-JP';
+      recognition.interimResults = false;
+
+      const statusEl = document.getElementById('status');
+      statusEl.innerText = "LISTENING...";
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('userInput').value = transcript;
+        processInput();
+      };
+
+      recognition.onerror = () => {
+        statusEl.innerText = "SYSTEM ONLINE // READY";
+      };
+
+      recognition.start();
+    }
+
+    // 入力処理と応答ロジック
+    async function processInput() {
       const inputEl = document.getElementById('userInput');
       const displayEl = document.getElementById('display');
       const statusEl = document.getElementById('status');
@@ -154,24 +206,25 @@
       displayEl.innerText = `解析中: "${query}"`;
       inputEl.value = "";
 
+      let response = "申し訳ありません。そのコマンドは現在のプロトコルに登録されていません。";
+
+      if (query.includes("こんにちは") || query.includes("起動")) {
+        response = "こんにちは、サー。すべてのシステムは正常に稼働しています。";
+      } else if (query.includes("誰") || query.includes("名前")) {
+        response = "私はJ.A.R.V.I.S.、あなたのAIアシスタントです。";
+      } else if (query.includes("時間") || query.includes("時刻")) {
+        const now = new Date();
+        response = `現在の時刻は ${now.getHours()}時${now.getMinutes()}分です。`;
+      } else if (query.includes("天気")) {
+        const weatherInfo = await fetchWeather();
+        response = `${weatherInfo} スーツの飛行テストの参考にしてください。`;
+      }
+
       setTimeout(() => {
-        let response = "申し訳ありません。そのコマンドは現在のプロトコルに登録されていません。";
-
-        if (query.includes("こんにちは") || query.includes("起動")) {
-          response = "こんにちは、サー。すべてのシステムは正常に稼働しています。";
-        } else if (query.includes("誰") || query.includes("名前")) {
-          response = "私はJ.A.R.V.I.S.、あなたのAIアシスタントです。";
-        } else if (query.includes("時間") || query.includes("時刻")) {
-          const now = new Date();
-          response = `現在の時刻は ${now.getHours()}時${now.getMinutes()}分です。`;
-        } else if (query.includes("天気")) {
-          response = "本日の空模様は良好です。スーツの飛行テストに適した状態です。";
-        }
-
         displayEl.innerText = response;
         statusEl.innerText = "SYSTEM ONLINE // READY";
         speak(response);
-      }, 600);
+      }, 400);
     }
 
     document.getElementById('userInput').addEventListener('keypress', (e) => {
