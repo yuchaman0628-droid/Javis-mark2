@@ -144,7 +144,7 @@
 
   <div class="console">
     <div class="status" id="status">INITIALIZING MICROPHONE...</div>
-    <div class="display-text" id="display">「スリープモード中。マイクを自動起動しています。『HEY JAVIS』と呼びかけてください。」</div>
+    <div class="display-text" id="display">「スリープモード中。マイク待機中... 声を発すると自動で起動してカメラが立ち上がります。」</div>
   </div>
 
   <!-- カメラ映像エリア -->
@@ -231,7 +231,7 @@
       }
     }
 
-    // 目が開くアニメーション ＋ カメラ起動処理（呼び出し時即座に起動）
+    // 目が開くアニメーション ＋ カメラ起動処理
     async function openEyeAndStartCamera() {
       document.body.classList.add('eye-open'); // 目が開くアニメーション発動
       const success = await startCamera(currentFacingMode);
@@ -377,7 +377,7 @@
 
       recognition.onstart = () => {
         if (!statusEl.innerText.includes("PROCESSING")) {
-          statusEl.innerText = isRecording ? "RECORDING VIDEO..." : (document.body.classList.contains('eye-open') ? "SYSTEM ONLINE // LISTENING..." : "LISTENING // SAY 'HEY JAVIS'");
+          statusEl.innerText = isRecording ? "RECORDING VIDEO..." : (document.body.classList.contains('eye-open') ? "SYSTEM ONLINE // LISTENING..." : "LISTENING // SPEAK ANY WORD TO START");
         }
       };
 
@@ -404,7 +404,7 @@
       }
     }
 
-    // 音声専用の入力処理と応答ロジック（HEY JAVISの検出・カメラ即時起動強化）
+    // 音声探知時の処理（どんな音声でも探知した瞬間に目が開き、カメラが起動）
     async function processInput(inputText) {
       const displayEl = document.getElementById('display');
       const statusEl = document.getElementById('status');
@@ -412,44 +412,24 @@
 
       if (!query) return;
 
+      // 探知時点で未起動（目が開いていない/カメラが無い）場合、即座に目を開けてカメラ起動
+      if (!document.body.classList.contains('eye-open') || !currentStream) {
+        statusEl.innerText = "VOICE DETECTED // INITIALIZING CAMERA...";
+        const success = await openEyeAndStartCamera();
+        const bootMsg = success 
+          ? "音声を感知しました。システムを起動し、カメラを開始しました。" 
+          : "音声を感知しました。システムを起動しましたが、カメラアクセスをご確認ください。";
+        displayEl.innerText = bootMsg;
+        speak(bootMsg);
+        return;
+      }
+
       statusEl.innerText = "PROCESSING...";
       displayEl.innerText = `認識音声を解析中: "${query}"`;
 
       let response = "申し訳ありません。そのコマンドは現在のプロトコルに登録されていません。";
-      
-      // 表記揺れや日本語音声認識による文字化けを網羅した判定ロジック
-      const normalizedQuery = query.toLowerCase().replace(/[\s\-_]/g, "");
-      
-      const isWakeWord = 
-        normalizedQuery.includes("heyjavis") || 
-        normalizedQuery.includes("heyjarvis") || 
-        normalizedQuery.includes("hellojavis") || 
-        normalizedQuery.includes("hellojarvis") ||
-        normalizedQuery.includes("javis") || 
-        normalizedQuery.includes("jarvis") ||
-        normalizedQuery.includes("ヘイジャビス") || 
-        normalizedQuery.includes("ヘイジャービス") || 
-        normalizedQuery.includes("へいじゃびす") || 
-        normalizedQuery.includes("へいじゃーびす") || 
-        normalizedQuery.includes("ハロージャビス") || 
-        normalizedQuery.includes("ハロージャービス") || 
-        normalizedQuery.includes("ジャビス") || 
-        normalizedQuery.includes("ジャービス") ||
-        normalizedQuery.includes("じゃびす") || 
-        normalizedQuery.includes("じゃーびす") ||
-        /ヘイ.*ジャ/.test(query) || 
-        /hey.*ja/i.test(query) ||
-        /ジャ[ー]?ビ/.test(query) ||
-        /じゃ[ー]?び/.test(query);
 
-      // 「HEY JAVIS」等のウェイクワード認識時に即座に目が開く＋カメラ起動
-      if (isWakeWord) {
-        statusEl.innerText = "WAKING UP // INITIALIZING CAMERA...";
-        const success = await openEyeAndStartCamera();
-        response = success 
-          ? "ヘイ、サー。システムを起動し、アイズ・オープン。カメラを開始しました。" 
-          : "ヘイ、サー。システムを起動しました。カメラアクセスの確認をお願いします。";
-      } else if (query.includes("こんにちは") || query.includes("起動")) {
+      if (query.includes("こんにちは") || query.includes("起動")) {
         response = "こんにちは、サー。すべてのシステムは正常に稼働しています。";
       } else if (query.includes("誰") || query.includes("名前")) {
         response = "私はJ.A.R.V.I.S.、あなたのAIアシスタントです。";
