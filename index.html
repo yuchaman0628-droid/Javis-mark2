@@ -174,11 +174,11 @@
   </div>
 
   <div class="console">
-    <div class="status" id="status">SLEEP MODE // SAY 'HELLO JAVIS'</div>
-    <div class="display-text" id="display">「スリープモード中。マイクを押して『HELLO JAVIS』と呼びかけてください。」</div>
+    <div class="status" id="status">LISTENING // SAY 'HEY JAVIS'</div>
+    <div class="display-text" id="display">「スリープモード中。マイク待機中です。『HEY JAVIS』と呼びかけてください。」</div>
     <div class="input-group">
-      <input type="text" id="userInput" placeholder="コマンドを入力、またはマイクを押してください...">
-      <button onclick="startVoiceRecognition()" title="音声入力">🎤</button>
+      <input type="text" id="userInput" placeholder="コマンドを入力、または声で話しかけてください...">
+      <button onclick="startVoiceRecognition()" title="音声認識リセット">🎤</button>
       <button onclick="processInput()">送信</button>
     </div>
   </div>
@@ -195,6 +195,7 @@
     let mediaRecorder = null;
     let recordedChunks = [];
     let isRecording = false;
+    let recognition = null;
 
     // AI風音声読み上げ機能
     function speak(text) {
@@ -266,14 +267,14 @@
       }
     }
 
-    // 目が開くアニメーション ＋ カメラ起動処理（確実な起動への改善）
+    // 目が開くアニメーション ＋ カメラ起動処理
     async function openEyeAndStartCamera() {
       document.body.classList.add('eye-open'); // 目が開くアニメーション発動
       const success = await startCamera(currentFacingMode);
       return success;
     }
 
-    // カメラ起動・制御機能（エラー修正・互換性強化）
+    // カメラ起動・制御機能
     async function startCamera(facingMode) {
       const videoEl = document.getElementById('camera-stream');
       const cameraContainerEl = document.getElementById('camera-container');
@@ -303,12 +304,10 @@
         currentStream = stream;
         currentFacingMode = facingMode;
         
-        // 明示的に再生を開始
         await videoEl.play();
         return true;
       } catch (e) {
         console.error("Camera Access Error: ", e);
-        // フォールバック: 単純な video: true で再試行
         try {
           const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
           videoEl.srcObject = fallbackStream;
@@ -393,7 +392,7 @@
       return true;
     }
 
-    // 音声認識機能
+    // 常時音声認識の初期化および起動処理
     function startVoiceRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
@@ -401,24 +400,46 @@
         return;
       }
 
-      const recognition = new SpeechRecognition();
+      if (recognition) {
+        try { recognition.stop(); } catch(e){}
+      }
+
+      recognition = new SpeechRecognition();
       recognition.lang = 'ja-JP';
       recognition.interimResults = false;
+      recognition.continuous = true;
 
       const statusEl = document.getElementById('status');
-      statusEl.innerText = "LISTENING...";
+
+      recognition.onstart = () => {
+        if (!statusEl.innerText.includes("PROCESSING")) {
+          statusEl.innerText = isRecording ? "RECORDING VIDEO..." : (document.body.classList.contains('eye-open') ? "SYSTEM ONLINE // LISTENING..." : "LISTENING // SAY 'HEY JAVIS'");
+        }
+      };
 
       recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
+        const lastIndex = event.results.length - 1;
+        const transcript = event.results[lastIndex][0].transcript.trim();
         document.getElementById('userInput').value = transcript;
         processInput();
       };
 
-      recognition.onerror = () => {
-        statusEl.innerText = isRecording ? "RECORDING VIDEO..." : (document.body.classList.contains('eye-open') ? "SYSTEM ONLINE // READY" : "SLEEP MODE // SAY 'HELLO JAVIS'");
+      recognition.onerror = (e) => {
+        console.warn("Speech recognition error:", e);
       };
 
-      recognition.start();
+      recognition.onend = () => {
+        // 常に再起動してバックグラウンド待機状態を維持
+        setTimeout(() => {
+          try { recognition.start(); } catch(e){}
+        }, 300);
+      };
+
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("Recognition start failed:", e);
+      }
     }
 
     // 入力処理と応答ロジック
@@ -437,13 +458,17 @@
       let response = "申し訳ありません。そのコマンドは現在のプロトコルに登録されていません。";
       const queryUpper = query.toUpperCase();
 
-      // 新規追加: 「HELLO JAVIS」による目が開く演出＋カメラ起動
-      if (queryUpper.includes("HELLO JAVIS") || queryUpper.includes("HELLO JARVIS") || query.includes("ハロー") || query.includes("ジャービス") || query.includes("ジャビス")) {
+      // 「HEY JAVIS」または「HELLO JAVIS」による起動演出
+      if (
+        queryUpper.includes("HEY JAVIS") || queryUpper.includes("HEY JARVIS") ||
+        queryUpper.includes("HELLO JAVIS") || queryUpper.includes("HELLO JARVIS") ||
+        query.includes("ヘイ") || query.includes("ハロー") || query.includes("ジャービス") || query.includes("ジャビス")
+      ) {
         statusEl.innerText = "WAKING UP // INITIALIZING CAMERA...";
         const success = await openEyeAndStartCamera();
         response = success 
-          ? "ハロー、サー。システムを起動し、アイズ・オープン。カメラを開始しました。" 
-          : "ハロー、サー。システムを起動しました。カメラアクセスの確認をお願いします。";
+          ? "ヘイ、サー。システムを起動し、アイズ・オープン。カメラを開始しました。" 
+          : "ヘイ、サー。システムを起動しました。カメラアクセスの確認をお願いします。";
       } else if (query.includes("こんにちは") || query.includes("起動")) {
         response = "こんにちは、サー。すべてのシステムは正常に稼働しています。";
       } else if (query.includes("誰") || query.includes("名前")) {
@@ -507,7 +532,7 @@
         if (isRecording) {
           statusEl.innerText = "RECORDING VIDEO...";
         } else {
-          statusEl.innerText = currentStream ? "CAMERA ACTIVE" : "SYSTEM ONLINE // READY";
+          statusEl.innerText = currentStream ? "CAMERA ACTIVE" : "SYSTEM ONLINE // LISTENING...";
         }
         speak(response);
       }, 400);
@@ -516,6 +541,18 @@
     document.getElementById('userInput').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') processInput();
     });
+
+    // 画面ロード完了時に自動的にマイクをスタート（常時待機状態へ）
+    window.addEventListener('DOMContentLoaded', () => {
+      startVoiceRecognition();
+    });
+
+    // ブラウザの自動再生ポリシー対策（最初の画面クリックでも確実にマイク起動）
+    document.body.addEventListener('click', () => {
+      if (!recognition) {
+        startVoiceRecognition();
+      }
+    }, { once: true });
   </script>
 </body>
 </html>
