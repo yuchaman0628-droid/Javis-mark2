@@ -106,7 +106,7 @@
       background: #fff;
       box-shadow: 0 0 15px #00f3ff;
     }
-    /* カメラ映像エリア（追加） */
+    /* カメラ映像エリア */
     .camera-container {
       width: 90%;
       max-width: 500px;
@@ -114,7 +114,7 @@
       border: 1px solid #00f3ff;
       border-radius: 8px;
       margin-top: 1rem;
-      display: none; /* 初期は非表示 */
+      display: none;
       overflow: hidden;
       box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
     }
@@ -146,6 +146,7 @@
     </div>
   </div>
 
+  <!-- カメラ映像エリア -->
   <div class="camera-container" id="camera-container">
     <video class="camera-stream" id="camera-stream" autoplay playsinline></video>
   </div>
@@ -153,24 +154,61 @@
   <script>
     // グローバル変数
     let currentStream = null;
-    let currentFacingMode = 'user'; // デフォルトはインカメラ
+    let currentFacingMode = 'user';
 
-    // 音声読み上げ機能
+    // AI風音声読み上げ機能（トーン・ピッチ・ボイス選択を調整）
     function speak(text) {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'ja-JP';
-        utterance.pitch = 0.9;
-        utterance.rate = 1.0;
+
+        // 利用可能な音声からAI/システム風の音声を選択
+        const voices = window.speechSynthesis.getVoices();
+        const aiVoice = voices.find(v => v.lang.includes('ja') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Keita') || v.name.includes('Ichiro')));
+        if (aiVoice) utterance.voice = aiVoice;
+
+        utterance.pitch = 0.85; // 少し低めのクールなトーン
+        utterance.rate = 1.05;  // スムーズなスピード
         window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    // ブラウザの音声一覧ロード対策
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); };
+    }
+
+    // 日付情報取得（追加）
+    function getDateInfo() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const date = now.getDate();
+      const days = ["日", "月", "火", "水", "木", "金", "土"];
+      const dayName = days[now.getDay()];
+      return `本日の日付は ${year}年${month}月${date}日 ${dayName}曜日です。`;
+    }
+
+    // バッテリー残量取得（追加）
+    async function getBatteryInfo() {
+      if ('getBattery' in navigator) {
+        try {
+          const battery = await navigator.getBattery();
+          const level = Math.round(battery.level * 100);
+          const charging = battery.charging ? "充電中" : "バッテリー駆動中";
+          return `現在のバッテリー残量は ${level}% です。ステータスは${charging}です。`;
+        } catch (e) {
+          return "申し訳ありません、バッテリー情報の取得に失敗しました。";
+        }
+      } else {
+        return "お使いのデバイス/ブラウザはバッテリー情報の取得に対応していません。";
       }
     }
 
     // 実際の気象データ取得 (Open-Meteo APIを使用)
     async function fetchWeather() {
       try {
-        // 東京の緯度経度からリアルタイム天気を取得
         const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&current_weather=true&timezone=Asia%2FTokyo");
         const data = await res.json();
         const temp = Math.round(data.current_weather.temperature);
@@ -190,7 +228,7 @@
       }
     }
 
-    // カメラ起動・制御機能（追加）
+    // カメラ起動・制御機能
     async function startCamera(facingMode) {
       const videoEl = document.getElementById('camera-stream');
       const cameraContainerEl = document.getElementById('camera-container');
@@ -215,14 +253,11 @@
     }
 
     async function switchCamera(facingMode) {
-      const statusEl = document.getElementById('status');
       if (!currentStream) {
         return await startCamera(facingMode);
       }
-      if (currentFacingMode === facingMode) return; // 既に同じカメラなら何もしない
-      
-      const res = await startCamera(facingMode);
-      return res;
+      if (currentFacingMode === facingMode) return;
+      return await startCamera(facingMode);
     }
 
     // 音声認識（操作）機能
@@ -275,45 +310,38 @@
       } else if (query.includes("時間") || query.includes("時刻")) {
         const now = new Date();
         response = `現在の時刻は ${now.getHours()}時${now.getMinutes()}分です。`;
+      } else if (query.includes("日付") || query.includes("今日") || query.includes("カレンダー")) {
+        // 日付コマンド（追加）
+        response = getDateInfo();
+      } else if (query.includes("バッテリー") || query.includes("電池") || query.includes("残量")) {
+        // バッテリー残量コマンド（追加）
+        response = await getBatteryInfo();
+      } else if (query.includes("読み上げて") || query.includes("喋って") || query.includes("言って")) {
+        // 任意の文字を読み上げるコマンド（追加）
+        let readText = query.replace(/読み上げて|喋って|言って/g, "").replace(/と|を/g, "").trim();
+        response = readText ? readText : "何を読み上げればよろしいでしょうか？";
       } else if (query.includes("天気")) {
         const weatherInfo = await fetchWeather();
         response = `${weatherInfo} スーツの飛行テストの参考にしてください。`;
       } else if (query.includes("カメラ") && (query.includes("起動") || query.includes("つけて"))) {
-        // カメラ起動コマンド
         statusEl.innerText = "ACCESSING CAMERA...";
-        const success = await startCamera('user'); // デフォルトはインカメラ
-        if (success) {
-          response = "了解、カメラを起動します。";
-        } else {
-          response = "申し訳ありません、カメラへのアクセスが拒否されました。";
-        }
+        const success = await startCamera('user');
+        response = success ? "了解、カメラを起動します。" : "申し訳ありません、カメラへのアクセスが拒否されました。";
       } else if (query.includes("インカメラ") || query.includes("内側カメラ")) {
-        // インカメラ切り替えコマンド
         statusEl.innerText = "SWITCHING CAMERA...";
         const success = await switchCamera('user');
-        if (success) {
-          response = "了解、インカメラに切り替えます。";
-        } else {
-          response = "インカメラへの切り替えに失敗しました。カメラが起動しているかご確認ください。";
-        }
+        response = success ? "了解、インカメラに切り替えます。" : "インカメラへの切り替えに失敗しました。";
       } else if (query.includes("アウトカメラ") || query.includes("外側カメラ")) {
-        // アウトカメラ切り替えコマンド
         statusEl.innerText = "SWITCHING CAMERA...";
         const success = await switchCamera('environment');
-        if (success) {
-          response = "了解、アウトカメラに切り替えます。";
-        } else {
-          response = "アウトカメラへの切り替えに失敗しました。カメラが起動しているかご確認ください。";
-        }
+        response = success ? "了解、アウトカメラに切り替えます。" : "アウトカメラへの切り替えに失敗しました。";
       } else if (query.includes("検索")) {
-        // 検索コマンド
-        // "〇〇を検索して" -> "〇〇"
         let searchQuery = query.replace("検索", "").replace("して", "").replace("を", "").trim();
         if (searchQuery) {
           response = `了解、"${searchQuery}"で外部データベースを検索します。`;
           setTimeout(() => {
             window.open(`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`, '_blank');
-          }, 1000); // 読み上げが終わってから開く
+          }, 1000);
         } else {
           response = "検索クエリがありません。何について調べればいいでしょうか？";
         }
