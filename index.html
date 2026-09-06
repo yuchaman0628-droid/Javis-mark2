@@ -105,38 +105,7 @@
       min-height: 60px;
       font-size: 1rem;
       line-height: 1.5;
-      margin-bottom: 1rem;
       text-shadow: 0 0 8px rgba(0, 243, 255, 0.6);
-    }
-    .input-group {
-      display: flex;
-      gap: 10px;
-    }
-    input[type="text"] {
-      flex: 1;
-      background: rgba(0, 243, 255, 0.05);
-      border: 1px solid #00f3ff;
-      padding: 10px 15px;
-      color: #fff;
-      border-radius: 4px;
-      outline: none;
-    }
-    input[type="text"]:focus {
-      box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
-    }
-    button {
-      background: #00f3ff;
-      color: #050b14;
-      border: none;
-      padding: 10px 15px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: 0.2s;
-    }
-    button:hover {
-      background: #fff;
-      box-shadow: 0 0 15px #00f3ff;
     }
     /* カメラ映像エリア */
     .camera-container {
@@ -174,13 +143,8 @@
   </div>
 
   <div class="console">
-    <div class="status" id="status">LISTENING // SAY 'HEY JAVIS'</div>
-    <div class="display-text" id="display">「スリープモード中。マイク待機中です。『HEY JAVIS』と呼びかけてください。」</div>
-    <div class="input-group">
-      <input type="text" id="userInput" placeholder="コマンドを入力、または声で話しかけてください...">
-      <button onclick="startVoiceRecognition()" title="音声認識リセット">🎤</button>
-      <button onclick="processInput()">送信</button>
-    </div>
+    <div class="status" id="status">INITIALIZING MICROPHONE...</div>
+    <div class="display-text" id="display">「スリープモード中。マイクを自動起動しています。『HEY JAVIS』と呼びかけてください。」</div>
   </div>
 
   <!-- カメラ映像エリア -->
@@ -392,7 +356,7 @@
       return true;
     }
 
-    // 常時音声認識の初期化および起動処理
+    // 完全自動の常時音声認識
     function startVoiceRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
@@ -420,8 +384,7 @@
       recognition.onresult = (event) => {
         const lastIndex = event.results.length - 1;
         const transcript = event.results[lastIndex][0].transcript.trim();
-        document.getElementById('userInput').value = transcript;
-        processInput();
+        processInput(transcript);
       };
 
       recognition.onerror = (e) => {
@@ -429,7 +392,6 @@
       };
 
       recognition.onend = () => {
-        // 常に再起動してバックグラウンド待機状態を維持
         setTimeout(() => {
           try { recognition.start(); } catch(e){}
         }, 300);
@@ -442,18 +404,16 @@
       }
     }
 
-    // 入力処理と応答ロジック
-    async function processInput() {
-      const inputEl = document.getElementById('userInput');
+    // 音声専用の入力処理と応答ロジック
+    async function processInput(inputText) {
       const displayEl = document.getElementById('display');
       const statusEl = document.getElementById('status');
-      const query = inputEl.value.trim();
+      const query = inputText ? inputText.trim() : "";
 
       if (!query) return;
 
       statusEl.innerText = "PROCESSING...";
-      displayEl.innerText = `解析中: "${query}"`;
-      inputEl.value = "";
+      displayEl.innerText = `認識音声を解析中: "${query}"`;
 
       let response = "申し訳ありません。そのコマンドは現在のプロトコルに登録されていません。";
       const queryUpper = query.toUpperCase();
@@ -538,16 +498,12 @@
       }, 400);
     }
 
-    document.getElementById('userInput').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') processInput();
-    });
-
-    // 画面ロード完了時に自動的にマイクをスタート（常時待機状態へ）
+    // 画面ロード完了時に即座にマイクを起動
     window.addEventListener('DOMContentLoaded', () => {
       startVoiceRecognition();
     });
 
-    // ブラウザの自動再生ポリシー対策（最初の画面クリックでも確実にマイク起動）
+    // ブラウザの自動音声制限対策（初回タップでも念のため起動補助）
     document.body.addEventListener('click', () => {
       if (!recognition) {
         startVoiceRecognition();
