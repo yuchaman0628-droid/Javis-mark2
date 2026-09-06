@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>J.A.R.V.I.S. Interface</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: #050b14;
+      color: #00f3ff;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    /* HUD リアクターアニメーション */
+    .hud-container {
+      position: relative;
+      width: 240px;
+      height: 240px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+    .outer-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border: 2px dashed #00f3ff;
+      border-radius: 50%;
+      animation: rotate 20s linear infinite;
+      box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+    }
+    .inner-ring {
+      position: absolute;
+      width: 70%;
+      height: 70%;
+      border: 3px solid #00f3ff;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: rotate-reverse 10s linear infinite;
+    }
+    .core {
+      width: 35%;
+      height: 35%;
+      background: radial-gradient(circle, #00f3ff 0%, rgba(0, 243, 255, 0.2) 70%, transparent 100%);
+      border-radius: 50%;
+      box-shadow: 0 0 25px #00f3ff;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    /* コンソール */
+    .console {
+      width: 90%;
+      max-width: 500px;
+      background: rgba(5, 15, 30, 0.85);
+      border: 1px solid #00f3ff;
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+    }
+    .status {
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      color: #00a8b3;
+      margin-bottom: 0.5rem;
+    }
+    .display-text {
+      min-height: 60px;
+      font-size: 1rem;
+      line-height: 1.5;
+      margin-bottom: 1rem;
+      text-shadow: 0 0 8px rgba(0, 243, 255, 0.6);
+    }
+    .input-group {
+      display: flex;
+      gap: 10px;
+    }
+    input[type="text"] {
+      flex: 1;
+      background: rgba(0, 243, 255, 0.05);
+      border: 1px solid #00f3ff;
+      padding: 10px 15px;
+      color: #fff;
+      border-radius: 4px;
+      outline: none;
+    }
+    input[type="text"]:focus {
+      box-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+    }
+    button {
+      background: #00f3ff;
+      color: #050b14;
+      border: none;
+      padding: 10px 20px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    button:hover {
+      background: #fff;
+      box-shadow: 0 0 15px #00f3ff;
+    }
+    @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes rotate-reverse { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
+    @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } }
+  </style>
+</head>
+<body>
+
+  <div class="hud-container">
+    <div class="outer-ring"></div>
+    <div class="inner-ring"></div>
+    <div class="core"></div>
+  </div>
+
+  <div class="console">
+    <div class="status" id="status">SYSTEM ONLINE // READY</div>
+    <div class="display-text" id="display">「システム起動完了。サー、どのようなご用件でしょうか？」</div>
+    <div class="input-group">
+      <input type="text" id="userInput" placeholder="コマンドを入力してください...">
+      <button onclick="processInput()">送信</button>
+    </div>
+  </div>
+
+  <script>
+    // 音声読み上げ機能
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ja-JP';
+        utterance.pitch = 0.9;
+        utterance.rate = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    // 入力処理と簡易応答ロジック
+    function processInput() {
+      const inputEl = document.getElementById('userInput');
+      const displayEl = document.getElementById('display');
+      const statusEl = document.getElementById('status');
+      const query = inputEl.value.trim();
+
+      if (!query) return;
+
+      statusEl.innerText = "PROCESSING...";
+      displayEl.innerText = `解析中: "${query}"`;
+      inputEl.value = "";
+
+      setTimeout(() => {
+        let response = "申し訳ありません。そのコマンドは現在のプロトコルに登録されていません。";
+
+        if (query.includes("こんにちは") || query.includes("起動")) {
+          response = "こんにちは、サー。すべてのシステムは正常に稼働しています。";
+        } else if (query.includes("誰") || query.includes("名前")) {
+          response = "私はJ.A.R.V.I.S.、あなたのAIアシスタントです。";
+        } else if (query.includes("時間") || query.includes("時刻")) {
+          const now = new Date();
+          response = `現在の時刻は ${now.getHours()}時${now.getMinutes()}分です。`;
+        } else if (query.includes("天気")) {
+          response = "本日の空模様は良好です。スーツの飛行テストに適した状態です。";
+        }
+
+        displayEl.innerText = response;
+        statusEl.innerText = "SYSTEM ONLINE // READY";
+        speak(response);
+      }, 600);
+    }
+
+    document.getElementById('userInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') processInput();
+    });
+  </script>
+</body>
+</html>
