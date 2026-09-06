@@ -1,514 +1,197 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>J.A.R.V.I.S. Interface</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background-color: #050b14;
-      color: #00f3ff;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      overflow: hidden;
-      position: relative;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>J.A.R.V.I.S. System</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #0ff;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+        }
 
-    /* 目が開く（アイ・オープニング）アニメーション用の瞼（まぶた）オーバーレイ */
-    .eye-shutter {
-      position: fixed;
-      left: 0;
-      width: 100%;
-      height: 50vh;
-      background-color: #02050a;
-      z-index: 9999;
-      transition: transform 1.5s cubic-bezier(0.77, 0, 0.175, 1);
-      pointer-events: none;
-    }
-    .eye-shutter.top {
-      top: 0;
-      border-bottom: 2px solid #00f3ff;
-      box-shadow: 0 5px 20px rgba(0, 243, 255, 0.5);
-    }
-    .eye-shutter.bottom {
-      bottom: 0;
-      border-top: 2px solid #00f3ff;
-      box-shadow: 0 -5px 20px rgba(0, 243, 255, 0.5);
-    }
-    /* 目が開いた状態のスタイル */
-    body.eye-open .eye-shutter.top {
-      transform: translateY(-100%);
-    }
-    body.eye-open .eye-shutter.bottom {
-      transform: translateY(100%);
-    }
+        /* HUD（ヘッドアップディスプレイ）風の装飾 */
+        #hud-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            border: 5px solid rgba(0, 255, 255, 0.3);
+            box-sizing: border-box;
+            pointer-events: none;
+            z-index: 10;
+        }
 
-    /* HUD リアクターアニメーション */
-    .hud-container {
-      position: relative;
-      width: 240px;
-      height: 240px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 2rem;
-    }
-    .outer-ring {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      border: 2px dashed #00f3ff;
-      border-radius: 50%;
-      animation: rotate 20s linear infinite;
-      box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
-    }
-    .inner-ring {
-      position: absolute;
-      width: 70%;
-      height: 70%;
-      border: 3px solid #00f3ff;
-      border-top-color: transparent;
-      border-radius: 50%;
-      animation: rotate-reverse 10s linear infinite;
-    }
-    .core {
-      width: 35%;
-      height: 35%;
-      background: radial-gradient(circle, #00f3ff 0%, rgba(0, 243, 255, 0.2) 70%, transparent 100%);
-      border-radius: 50%;
-      box-shadow: 0 0 25px #00f3ff;
-      animation: pulse 2s ease-in-out infinite;
-    }
-    /* コンソール */
-    .console {
-      width: 90%;
-      max-width: 500px;
-      background: rgba(5, 15, 30, 0.85);
-      border: 1px solid #00f3ff;
-      border-radius: 8px;
-      padding: 1.5rem;
-      box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
-      z-index: 10;
-    }
-    .status {
-      font-size: 0.75rem;
-      letter-spacing: 2px;
-      color: #00a8b3;
-      margin-bottom: 0.5rem;
-    }
-    .display-text {
-      min-height: 60px;
-      font-size: 1rem;
-      line-height: 1.5;
-      text-shadow: 0 0 8px rgba(0, 243, 255, 0.6);
-    }
-    /* カメラ映像エリア */
-    .camera-container {
-      width: 90%;
-      max-width: 500px;
-      background: rgba(5, 15, 30, 0.85);
-      border: 1px solid #00f3ff;
-      border-radius: 8px;
-      margin-top: 1rem;
-      display: none;
-      overflow: hidden;
-      box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
-      z-index: 10;
-    }
-    .camera-stream {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    @keyframes rotate-reverse { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
-    @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } }
-  </style>
+        .hud-element {
+            position: absolute;
+            border: 1px solid #0ff;
+            padding: 10px;
+            background: rgba(0, 20, 40, 0.5);
+            box-shadow: 0 0 10px #0ff;
+        }
+
+        #status-box { top: 20px; left: 20px; width: 250px; }
+        #log-box { bottom: 20px; left: 20px; width: 400px; height: 150px; overflow-y: auto; }
+        #target-reticle {
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px; height: 300px;
+            border-radius: 50%;
+            border: 2px dashed #0ff;
+            animation: rotate 10s linear infinite;
+        }
+
+        @keyframes rotate {
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        /* カメラ映像 */
+        #camera-feed {
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.7);
+            z-index: 1;
+        }
+
+        /* 起動ボタン（ブラウザの仕様上、ユーザーのアクションが必要） */
+        #start-btn {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 24px;
+            background: #000;
+            color: #0ff;
+            border: 2px solid #0ff;
+            cursor: pointer;
+            z-index: 20;
+            pointer-events: auto;
+            box-shadow: 0 0 15px #0ff;
+            transition: 0.3s;
+        }
+
+        #start-btn:hover {
+            background: #0ff;
+            color: #000;
+        }
+    </style>
 </head>
 <body>
 
-  <!-- 目が開くアニメーション構造 -->
-  <div class="eye-shutter top"></div>
-  <div class="eye-shutter bottom"></div>
+    <button id="start-btn" onclick="startJarvis()">システム起動 (Boot J.A.R.V.I.S.)</button>
 
-  <div class="hud-container">
-    <div class="outer-ring"></div>
-    <div class="inner-ring"></div>
-    <div class="core"></div>
-  </div>
+    <video id="camera-feed" autoplay playsinline></video>
 
-  <div class="console">
-    <div class="status" id="status">INITIALIZING MICROPHONE...</div>
-    <div class="display-text" id="display">「スリープモード中。マイク待機中... 声を発すると自動で起動してカメラが立ち上がります。」</div>
-  </div>
+    <div id="hud-container">
+        <div id="status-box" class="hud-element">
+            <h3>J.A.R.V.I.S. ONLINE</h3>
+            <p>CAMERA: <span id="cam-status">OFF</span></p>
+            <p>MIC: <span id="mic-status">OFF</span></p>
+        </div>
+        <div id="target-reticle" class="hud-element"></div>
+        <div id="log-box" class="hud-element">
+            <strong>SYSTEM LOG:</strong><br>
+            <span id="log-content"></span>
+        </div>
+    </div>
 
-  <!-- カメラ映像エリア -->
-  <div class="camera-container" id="camera-container">
-    <video class="camera-stream" id="camera-stream" autoplay playsinline muted></video>
-  </div>
-
-  <script>
-    // グローバル変数
-    let currentStream = null;
-    let currentFacingMode = 'user';
-    let mediaRecorder = null;
-    let recordedChunks = [];
-    let isRecording = false;
-    let recognition = null;
-
-    // AI風音声読み上げ機能
-    function speak(text) {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'ja-JP';
-
-        const voices = window.speechSynthesis.getVoices();
-        const aiVoice = voices.find(v => v.lang.includes('ja') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Keita') || v.name.includes('Ichiro')));
-        if (aiVoice) utterance.voice = aiVoice;
-
-        utterance.pitch = 0.85;
-        utterance.rate = 1.05;
-        window.speechSynthesis.speak(utterance);
-      }
-    }
-
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); };
-    }
-
-    // 日付情報取得
-    function getDateInfo() {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth() + 1;
-      const date = now.getDate();
-      const days = ["日", "月", "火", "水", "木", "金", "土"];
-      const dayName = days[now.getDay()];
-      return `本日の日付は ${year}年${month}月${date}日 ${dayName}曜日です。`;
-    }
-
-    // バッテリー残量取得
-    async function getBatteryInfo() {
-      if ('getBattery' in navigator) {
-        try {
-          const battery = await navigator.getBattery();
-          const level = Math.round(battery.level * 100);
-          const charging = battery.charging ? "充電中" : "バッテリー駆動中";
-          return `現在のバッテリー残量は ${level}% です。ステータスは${charging}です。`;
-        } catch (e) {
-          return "申し訳ありません、バッテリー情報の取得に失敗しました。";
+    <script>
+        // ログ出力関数
+        function addLog(text, isJarvis = false) {
+            const logContent = document.getElementById('log-content');
+            const prefix = isJarvis ? "<span style='color:#ff0'>[J.A.R.V.I.S.]</span> " : "[USER] ";
+            logContent.innerHTML += prefix + text + "<br>";
+            document.getElementById('log-box').scrollTop = document.getElementById('log-box').scrollHeight;
         }
-      } else {
-        return "お使いのデバイス/ブラウザはバッテリー情報の取得に対応していません。";
-      }
-    }
 
-    // 実際の気象データ取得 (Open-Meteo APIを使用)
-    async function fetchWeather() {
-      try {
-        const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&current_weather=true&timezone=Asia%2FTokyo");
-        const data = await res.json();
-        const temp = Math.round(data.current_weather.temperature);
-        const code = data.current_weather.weathercode;
-        
-        let weatherDesc = "晴れ";
-        if (code === 0) weatherDesc = "快晴";
-        else if ([1, 2, 3].includes(code)) weatherDesc = "晴れ時々曇り";
-        else if ([45, 48].includes(code)) weatherDesc = "霧";
-        else if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) weatherDesc = "雨";
-        else if ([71, 73, 75, 77, 85, 86].includes(code)) weatherDesc = "雪";
-        else if ([95, 96, 99].includes(code)) weatherDesc = "雷雨";
-
-        return `現在の東京の天気は${weatherDesc}、気温は${temp}度です。`;
-      } catch (e) {
-        return "申し訳ありません、気象データの取得に失敗しました。";
-      }
-    }
-
-    // 目が開くアニメーション ＋ カメラ起動処理
-    async function openEyeAndStartCamera() {
-      document.body.classList.add('eye-open'); // 目が開くアニメーション発動
-      const success = await startCamera(currentFacingMode);
-      return success;
-    }
-
-    // カメラ起動・制御機能
-    async function startCamera(facingMode) {
-      const videoEl = document.getElementById('camera-stream');
-      const cameraContainerEl = document.getElementById('camera-container');
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("お使いのブラウザ環境ではカメラアクセスがサポートされていないか、SSL(https)接続されていません。");
-        return false;
-      }
-
-      if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-      }
-
-      try {
-        const constraints = {
-          video: {
-            facingMode: facingMode,
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: false
-        };
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        videoEl.srcObject = stream;
-        cameraContainerEl.style.display = "block";
-        currentStream = stream;
-        currentFacingMode = facingMode;
-        
-        await videoEl.play();
-        return true;
-      } catch (e) {
-        console.error("Camera Access Error: ", e);
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          videoEl.srcObject = fallbackStream;
-          cameraContainerEl.style.display = "block";
-          currentStream = fallbackStream;
-          await videoEl.play();
-          return true;
-        } catch (err) {
-          cameraContainerEl.style.display = "none";
-          return false;
+        // 音声合成（J.A.R.V.I.S.が喋る）
+        function speak(text) {
+            addLog(text, true);
+            const synth = window.speechSynthesis;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ja-JP';
+            utterance.pitch = 0.8; // 少し低めの声
+            utterance.rate = 1.1;  // 少し早口
+            synth.speak(utterance);
         }
-      }
-    }
 
-    async function switchCamera(facingMode) {
-      if (!currentStream) {
-        return await startCamera(facingMode);
-      }
-      if (currentFacingMode === facingMode) return;
-      return await startCamera(facingMode);
-    }
-
-    // 写真撮影機能
-    async function takePhoto() {
-      if (!currentStream) {
-        const success = await openEyeAndStartCamera();
-        if (!success) return false;
-        await new Promise(r => setTimeout(r, 800));
-      }
-      
-      const videoEl = document.getElementById('camera-stream');
-      const canvas = document.createElement('canvas');
-      canvas.width = videoEl.videoWidth || 640;
-      canvas.height = videoEl.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-
-      const link = document.createElement('a');
-      link.download = `jarvis_photo_${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      return true;
-    }
-
-    // 動画録画開始機能
-    async function startRecording() {
-      if (isRecording) return "RECORDING_ALREADY";
-      if (!currentStream) {
-        const success = await openEyeAndStartCamera();
-        if (!success) return "CAMERA_ERROR";
-        await new Promise(r => setTimeout(r, 800));
-      }
-
-      recordedChunks = [];
-      try {
-        mediaRecorder = new MediaRecorder(currentStream);
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) recordedChunks.push(event.data);
-        };
-        mediaRecorder.onstop = () => {
-          const blob = new Blob(recordedChunks, { type: 'video/webm' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `jarvis_video_${Date.now()}.webm`;
-          a.click();
-          URL.revokeObjectURL(url);
-        };
-        mediaRecorder.start();
-        isRecording = true;
-        return "SUCCESS";
-      } catch (e) {
-        return "ERROR";
-      }
-    }
-
-    // 動画録画停止機能
-    function stopRecording() {
-      if (!isRecording || !mediaRecorder) return false;
-      mediaRecorder.stop();
-      isRecording = false;
-      return true;
-    }
-
-    // 常時音声認識の初期化および自動起動処理
-    function startVoiceRecognition() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        alert("お使いのブラウザは音声認識に対応していません。Google Chrome等をご利用ください。");
-        return;
-      }
-
-      if (recognition) {
-        try { recognition.stop(); } catch(e){}
-      }
-
-      recognition = new SpeechRecognition();
-      recognition.lang = 'ja-JP';
-      recognition.interimResults = false;
-      recognition.continuous = true;
-
-      const statusEl = document.getElementById('status');
-
-      recognition.onstart = () => {
-        if (!statusEl.innerText.includes("PROCESSING")) {
-          statusEl.innerText = isRecording ? "RECORDING VIDEO..." : (document.body.classList.contains('eye-open') ? "SYSTEM ONLINE // LISTENING..." : "LISTENING // SPEAK ANY WORD TO START");
+        // コマンド処理
+        function processCommand(command) {
+            if (command.includes('こんにちは') || command.includes('おはよう')) {
+                speak('こんにちは、ボス。本日のシステムはすべて正常に稼働しています。');
+            } else if (command.includes('時間') || command.includes('何時')) {
+                const now = new Date();
+                speak(`現在の時刻は${now.getHours()}時${now.getMinutes()}分です。`);
+            } else if (command.includes('天気')) {
+                speak('申し訳ありません、外部ネットワークへの接続がまだ実装されていません。外を見て確認してください。');
+            } else if (command.includes('スキャン')) {
+                speak('周囲の環境をスキャンしています... 脅威は検出されませんでした。');
+                document.getElementById('target-reticle').style.borderColor = '#0f0';
+                setTimeout(() => document.getElementById('target-reticle').style.borderColor = '#0ff', 3000);
+            } else if (command.includes('終了') || command.includes('シャットダウン')) {
+                speak('システムをスリープ状態に移行します。おやすみなさいませ、ボス。');
+            } else {
+                speak('すみません、そのコマンドは認識できませんでした。');
+            }
         }
-      };
 
-      recognition.onresult = (event) => {
-        const lastIndex = event.results.length - 1;
-        const transcript = event.results[lastIndex][0].transcript.trim();
-        processInput(transcript);
-      };
+        // システム起動（カメラとマイクの許可を取得）
+        async function startJarvis() {
+            document.getElementById('start-btn').style.display = 'none';
+            speak('システムを起動中。カメラとマイクのアクセスを許可してください。');
 
-      recognition.onerror = (e) => {
-        console.warn("Speech recognition error:", e);
-      };
+            // カメラの起動
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const video = document.getElementById('camera-feed');
+                video.srcObject = stream;
+                document.getElementById('cam-status').innerText = 'ONLINE';
+                document.getElementById('cam-status').style.color = '#0f0';
+            } catch (err) {
+                addLog('エラー: カメラにアクセスできません。', true);
+            }
 
-      recognition.onend = () => {
-        setTimeout(() => {
-          try { recognition.start(); } catch(e){}
-        }, 300);
-      };
+            // 音声認識の起動 (Web Speech API)
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'ja-JP';
+                recognition.continuous = true; // 常に聞き取りを続ける
+                recognition.interimResults = false;
 
-      try {
-        recognition.start();
-      } catch (e) {
-        console.error("Recognition start failed:", e);
-      }
-    }
+                recognition.onstart = function() {
+                    document.getElementById('mic-status').innerText = 'LISTENING...';
+                    document.getElementById('mic-status').style.color = '#0f0';
+                };
 
-    // 音声探知時の処理（どんな音声でも探知した瞬間に目が開き、カメラが起動）
-    async function processInput(inputText) {
-      const displayEl = document.getElementById('display');
-      const statusEl = document.getElementById('status');
-      const query = inputText ? inputText.trim() : "";
+                recognition.onresult = function(event) {
+                    const lastIndex = event.results.length - 1;
+                    const transcript = event.results[lastIndex][0].transcript.trim();
+                    addLog(transcript);
+                    processCommand(transcript);
+                };
 
-      if (!query) return;
+                recognition.onerror = function(event) {
+                    addLog('エラー: 音声認識が中断されました (' + event.error + ')', true);
+                };
 
-      // 探知時点で未起動（目が開いていない/カメラが無い）場合、即座に目を開けてカメラ起動
-      if (!document.body.classList.contains('eye-open') || !currentStream) {
-        statusEl.innerText = "VOICE DETECTED // INITIALIZING CAMERA...";
-        const success = await openEyeAndStartCamera();
-        const bootMsg = success 
-          ? "音声を感知しました。システムを起動し、カメラを開始しました。" 
-          : "音声を感知しました。システムを起動しましたが、カメラアクセスをご確認ください。";
-        displayEl.innerText = bootMsg;
-        speak(bootMsg);
-        return;
-      }
+                recognition.onend = function() {
+                    // 途切れても自動で再起動する
+                    recognition.start();
+                };
 
-      statusEl.innerText = "PROCESSING...";
-      displayEl.innerText = `認識音声を解析中: "${query}"`;
-
-      let response = "申し訳ありません。そのコマンドは現在のプロトコルに登録されていません。";
-
-      if (query.includes("こんにちは") || query.includes("起動")) {
-        response = "こんにちは、サー。すべてのシステムは正常に稼働しています。";
-      } else if (query.includes("誰") || query.includes("名前")) {
-        response = "私はJ.A.R.V.I.S.、あなたのAIアシスタントです。";
-      } else if (query.includes("時間") || query.includes("時刻")) {
-        const now = new Date();
-        response = `現在の時刻は ${now.getHours()}時${now.getMinutes()}分です。`;
-      } else if (query.includes("日付") || query.includes("今日") || query.includes("カレンダー")) {
-        response = getDateInfo();
-      } else if (query.includes("バッテリー") || query.includes("電池") || query.includes("残量")) {
-        response = await getBatteryInfo();
-      } else if (query.includes("写真") || query.includes("パシャ") || query.includes("撮影")) {
-        statusEl.innerText = "CAPTURING IMAGE...";
-        const success = await takePhoto();
-        response = success ? "了解、写真を撮影し端末に保存しました。" : "カメラへのアクセスエラーにより撮影に失敗しました。";
-      } else if ((query.includes("録画") || query.includes("動画")) && (query.includes("停止") || query.includes("止めて") || query.includes("ストップ"))) {
-        const success = stopRecording();
-        response = success ? "録画を停止しました。動画ファイルを保存します。" : "現在録画は行われていません。";
-      } else if (query.includes("録画") || (query.includes("動画") && (query.includes("撮影") || query.includes("撮って")))) {
-        const res = await startRecording();
-        if (res === "SUCCESS") {
-          statusEl.innerText = "RECORDING VIDEO...";
-          response = "了解、動画の録画を開始します。停止するには「録画停止」とお知らせください。";
-        } else if (res === "RECORDING_ALREADY") {
-          response = "現在すでに動画を録画中です。";
-        } else {
-          response = "カメラへのアクセスエラーにより録画の開始に失敗しました。";
+                recognition.start();
+                speak('準備完了です、ボス。ご指示をどうぞ。');
+            } else {
+                speak('お使いのブラウザは音声認識をサポートしていません。');
+            }
         }
-      } else if (query.includes("読み上げて") || query.includes("喋って") || query.includes("言って")) {
-        let readText = query.replace(/読み上げて|喋って|言って/g, "").replace(/と|を/g, "").trim();
-        response = readText ? readText : "何を読み上げればよろしいでしょうか？";
-      } else if (query.includes("天気")) {
-        const weatherInfo = await fetchWeather();
-        response = `${weatherInfo} スーツの飛行テストの参考にしてください。`;
-      } else if (query.includes("カメラ") && (query.includes("起動") || query.includes("つけて"))) {
-        statusEl.innerText = "ACCESSING CAMERA...";
-        const success = await openEyeAndStartCamera();
-        response = success ? "了解、カメラを起動します。" : "申し訳ありません、カメラへのアクセスが拒否されました。";
-      } else if (query.includes("インカメラ") || query.includes("内側カメラ")) {
-        statusEl.innerText = "SWITCHING CAMERA...";
-        const success = await switchCamera('user');
-        response = success ? "了解、インカメラに切り替えます。" : "インカメラへの切り替えに失敗しました。";
-      } else if (query.includes("アウトカメラ") || query.includes("外側カメラ")) {
-        statusEl.innerText = "SWITCHING CAMERA...";
-        const success = await switchCamera('environment');
-        response = success ? "了解、アウトカメラに切り替えます。" : "アウトカメラへの切り替えに失敗しました。";
-      } else if (query.includes("検索")) {
-        let searchQuery = query.replace("検索", "").replace("して", "").replace("を", "").trim();
-        if (searchQuery) {
-          response = `了解、"${searchQuery}"で外部データベースを検索します。`;
-          setTimeout(() => {
-            window.open(`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`, '_blank');
-          }, 1000);
-        } else {
-          response = "検索クエリがありません。何について調べればいいでしょうか？";
-        }
-      }
-
-      setTimeout(() => {
-        displayEl.innerText = response;
-        if (isRecording) {
-          statusEl.innerText = "RECORDING VIDEO...";
-        } else {
-          statusEl.innerText = currentStream ? "CAMERA ACTIVE" : "SYSTEM ONLINE // LISTENING...";
-        }
-        speak(response);
-      }, 400);
-    }
-
-    // 画面ロード完了時に即座にマイクを起動
-    window.addEventListener('DOMContentLoaded', () => {
-      startVoiceRecognition();
-    });
-
-    // ブラウザの自動音声制限対策（タップ時起動補助）
-    document.body.addEventListener('click', () => {
-      if (!recognition) {
-        startVoiceRecognition();
-      }
-    }, { once: true });
-  </script>
+    </script>
 </body>
 </html>
