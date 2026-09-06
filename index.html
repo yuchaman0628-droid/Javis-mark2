@@ -231,7 +231,7 @@
       }
     }
 
-    // 目が開くアニメーション ＋ カメラ起動処理
+    // 目が開くアニメーション ＋ カメラ起動処理（呼び出し時即座に起動）
     async function openEyeAndStartCamera() {
       document.body.classList.add('eye-open'); // 目が開くアニメーション発動
       const success = await startCamera(currentFacingMode);
@@ -356,7 +356,7 @@
       return true;
     }
 
-    // 完全自動の常時音声認識
+    // 常時音声認識の初期化および自動起動処理
     function startVoiceRecognition() {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
@@ -404,7 +404,7 @@
       }
     }
 
-    // 音声専用の入力処理と応答ロジック
+    // 音声専用の入力処理と応答ロジック（HEY JAVISの検出・カメラ即時起動強化）
     async function processInput(inputText) {
       const displayEl = document.getElementById('display');
       const statusEl = document.getElementById('status');
@@ -416,14 +416,34 @@
       displayEl.innerText = `認識音声を解析中: "${query}"`;
 
       let response = "申し訳ありません。そのコマンドは現在のプロトコルに登録されていません。";
-      const queryUpper = query.toUpperCase();
+      
+      // 表記揺れや日本語音声認識による文字化けを網羅した判定ロジック
+      const normalizedQuery = query.toLowerCase().replace(/[\s\-_]/g, "");
+      
+      const isWakeWord = 
+        normalizedQuery.includes("heyjavis") || 
+        normalizedQuery.includes("heyjarvis") || 
+        normalizedQuery.includes("hellojavis") || 
+        normalizedQuery.includes("hellojarvis") ||
+        normalizedQuery.includes("javis") || 
+        normalizedQuery.includes("jarvis") ||
+        normalizedQuery.includes("ヘイジャビス") || 
+        normalizedQuery.includes("ヘイジャービス") || 
+        normalizedQuery.includes("へいじゃびす") || 
+        normalizedQuery.includes("へいじゃーびす") || 
+        normalizedQuery.includes("ハロージャビス") || 
+        normalizedQuery.includes("ハロージャービス") || 
+        normalizedQuery.includes("ジャビス") || 
+        normalizedQuery.includes("ジャービス") ||
+        normalizedQuery.includes("じゃびす") || 
+        normalizedQuery.includes("じゃーびす") ||
+        /ヘイ.*ジャ/.test(query) || 
+        /hey.*ja/i.test(query) ||
+        /ジャ[ー]?ビ/.test(query) ||
+        /じゃ[ー]?び/.test(query);
 
-      // 「HEY JAVIS」または「HELLO JAVIS」による起動演出
-      if (
-        queryUpper.includes("HEY JAVIS") || queryUpper.includes("HEY JARVIS") ||
-        queryUpper.includes("HELLO JAVIS") || queryUpper.includes("HELLO JARVIS") ||
-        query.includes("ヘイ") || query.includes("ハロー") || query.includes("ジャービス") || query.includes("ジャビス")
-      ) {
+      // 「HEY JAVIS」等のウェイクワード認識時に即座に目が開く＋カメラ起動
+      if (isWakeWord) {
         statusEl.innerText = "WAKING UP // INITIALIZING CAMERA...";
         const success = await openEyeAndStartCamera();
         response = success 
@@ -503,7 +523,7 @@
       startVoiceRecognition();
     });
 
-    // ブラウザの自動音声制限対策（初回タップでも念のため起動補助）
+    // ブラウザの自動音声制限対策（タップ時起動補助）
     document.body.addEventListener('click', () => {
       if (!recognition) {
         startVoiceRecognition();
