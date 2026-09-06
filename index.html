@@ -106,6 +106,23 @@
       background: #fff;
       box-shadow: 0 0 15px #00f3ff;
     }
+    /* カメラ映像エリア（追加） */
+    .camera-container {
+      width: 90%;
+      max-width: 500px;
+      background: rgba(5, 15, 30, 0.85);
+      border: 1px solid #00f3ff;
+      border-radius: 8px;
+      margin-top: 1rem;
+      display: none; /* 初期は非表示 */
+      overflow: hidden;
+      box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+    }
+    .camera-stream {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
     @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     @keyframes rotate-reverse { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
     @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } }
@@ -129,7 +146,15 @@
     </div>
   </div>
 
+  <div class="camera-container" id="camera-container">
+    <video class="camera-stream" id="camera-stream" autoplay playsinline></video>
+  </div>
+
   <script>
+    // グローバル変数
+    let currentStream = null;
+    let currentFacingMode = 'user'; // デフォルトはインカメラ
+
     // 音声読み上げ機能
     function speak(text) {
       if ('speechSynthesis' in window) {
@@ -163,6 +188,41 @@
       } catch (e) {
         return "申し訳ありません、気象データの取得に失敗しました。";
       }
+    }
+
+    // カメラ起動・制御機能（追加）
+    async function startCamera(facingMode) {
+      const videoEl = document.getElementById('camera-stream');
+      const cameraContainerEl = document.getElementById('camera-container');
+
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingMode }
+        });
+        videoEl.srcObject = stream;
+        cameraContainerEl.style.display = "block";
+        currentStream = stream;
+        currentFacingMode = facingMode;
+        return true;
+      } catch (e) {
+        cameraContainerEl.style.display = "none";
+        return false;
+      }
+    }
+
+    async function switchCamera(facingMode) {
+      const statusEl = document.getElementById('status');
+      if (!currentStream) {
+        return await startCamera(facingMode);
+      }
+      if (currentFacingMode === facingMode) return; // 既に同じカメラなら何もしない
+      
+      const res = await startCamera(facingMode);
+      return res;
     }
 
     // 音声認識（操作）機能
@@ -218,11 +278,50 @@
       } else if (query.includes("天気")) {
         const weatherInfo = await fetchWeather();
         response = `${weatherInfo} スーツの飛行テストの参考にしてください。`;
+      } else if (query.includes("カメラ") && (query.includes("起動") || query.includes("つけて"))) {
+        // カメラ起動コマンド
+        statusEl.innerText = "ACCESSING CAMERA...";
+        const success = await startCamera('user'); // デフォルトはインカメラ
+        if (success) {
+          response = "了解、カメラを起動します。";
+        } else {
+          response = "申し訳ありません、カメラへのアクセスが拒否されました。";
+        }
+      } else if (query.includes("インカメラ") || query.includes("内側カメラ")) {
+        // インカメラ切り替えコマンド
+        statusEl.innerText = "SWITCHING CAMERA...";
+        const success = await switchCamera('user');
+        if (success) {
+          response = "了解、インカメラに切り替えます。";
+        } else {
+          response = "インカメラへの切り替えに失敗しました。カメラが起動しているかご確認ください。";
+        }
+      } else if (query.includes("アウトカメラ") || query.includes("外側カメラ")) {
+        // アウトカメラ切り替えコマンド
+        statusEl.innerText = "SWITCHING CAMERA...";
+        const success = await switchCamera('environment');
+        if (success) {
+          response = "了解、アウトカメラに切り替えます。";
+        } else {
+          response = "アウトカメラへの切り替えに失敗しました。カメラが起動しているかご確認ください。";
+        }
+      } else if (query.includes("検索")) {
+        // 検索コマンド
+        // "〇〇を検索して" -> "〇〇"
+        let searchQuery = query.replace("検索", "").replace("して", "").replace("を", "").trim();
+        if (searchQuery) {
+          response = `了解、"${searchQuery}"で外部データベースを検索します。`;
+          setTimeout(() => {
+            window.open(`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`, '_blank');
+          }, 1000); // 読み上げが終わってから開く
+        } else {
+          response = "検索クエリがありません。何について調べればいいでしょうか？";
+        }
       }
 
       setTimeout(() => {
         displayEl.innerText = response;
-        statusEl.innerText = "SYSTEM ONLINE // READY";
+        statusEl.innerText = (query.includes("カメラ") && startCamera) ? "CAMERA ACTIVE" : "SYSTEM ONLINE // READY";
         speak(response);
       }, 400);
     }
