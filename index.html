@@ -217,6 +217,34 @@
             filter: hue-rotate(180deg) saturate(5) contrast(2.5) invert(0.1) !important;
         }
 
+        /* VRモード時の二眼レフ風分割コンテナ */
+        #vr-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            z-index: 2;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .vr-view {
+            width: 50vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            border-right: 2px solid #222;
+        }
+        .vr-view video {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+        }
+
         #sub-camera-feed {
             position: absolute;
             bottom: 20px;
@@ -252,6 +280,13 @@
     <div id="eye-bottom" class="eye-lid"></div>
 
     <video id="camera-feed" autoplay playsinline muted></video>
+    
+    <!-- VRモード用ラッパー（初期は非表示） -->
+    <div id="vr-wrapper" style="display: none;">
+        <div class="vr-view"><video class="vr-cam-clone" autoplay playsinline muted></video></div>
+        <div class="vr-view"><video class="vr-cam-clone" autoplay playsinline muted></video></div>
+    </div>
+
     <video id="sub-camera-feed" autoplay playsinline muted></video>
 
     <div id="hud-container">
@@ -317,6 +352,7 @@
 
         let isThermalMode = false;
         let isCombatMode = false;
+        let isVrMode = false;
 
         let mediaRecorder = null;
         let recordedChunks = [];
@@ -492,7 +528,6 @@
             speak('写真を撮影し保存しました。');
         }
 
-        // 録音の音声が取れていない問題を修正：カメラのストリームに加えてマイク音声（Audio）もミックスして録画
         async function startScreenRecording() {
             try {
                 const videoElement = document.getElementById('camera-feed');
@@ -508,9 +543,7 @@
                 try {
                     const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                     micStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
-                } catch (e) {
-                    // マイクが取得できない場合はカメラの音声トラック（あれば）を利用
-                }
+                } catch (e) {}
 
                 mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus' });
                 recordedChunks = [];
@@ -553,7 +586,6 @@
             }
         }
 
-        // 画面拡大・縮小機能（〇％に拡大・縮小に対応）
         function setCameraZoom(scale) {
             playSciFiSound('beep');
             cameraZoomScale = Math.min(5.0, Math.max(0.5, scale));
@@ -646,15 +678,37 @@
             }
         }
 
+        // VRモードの追加
+        function setVrMode(enable, silent = false) {
+            isVrMode = enable;
+            const vrWrapper = document.getElementById('vr-wrapper');
+            const cameraFeed = document.getElementById('camera-feed');
+            const modeStatus = document.getElementById('mode-status');
+
+            if (isVrMode) {
+                cameraFeed.style.display = 'none';
+                vrWrapper.style.display = 'flex';
+                modeStatus.innerText = 'VR MODE';
+                modeStatus.style.color = '#00ffff';
+                if (!silent) speak('VRモードを起動しました。ゴーグルを装着してください。');
+            } else {
+                vrWrapper.style.display = 'none';
+                cameraFeed.style.display = 'block';
+                modeStatus.innerText = 'NORMAL';
+                modeStatus.style.color = '#0f0';
+                if (!silent) speak('VRモードを解除しました。');
+            }
+        }
+
         function resetToNormalMode() {
             setThermalMode(false, true);
             setCombatMode(false, true);
+            setVrMode(false, true);
             toggleFullscreen(false);
             setCameraZoom(1.0);
             speak('すべての特殊モードおよびフルスクリーンを解除し、通常モードに戻しました。');
         }
 
-        // Googleレンズ：他のタブで開くように設定
         function analyzeWithGoogleLens() {
             playSciFiSound('beep');
             speak('Googleレンズの検索タブを別ウィンドウで開きます。');
@@ -722,6 +776,7 @@
 
             const video = document.getElementById('camera-feed');
             const subVideo = document.getElementById('sub-camera-feed');
+            const vrClones = document.querySelectorAll('.vr-cam-clone');
 
             try {
                 if (facingMode === 'environment') {
@@ -731,6 +786,7 @@
                         mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                     }
                     video.srcObject = mainStream;
+                    vrClones.forEach(clone => clone.srcObject = mainStream);
 
                     try {
                         subStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
@@ -740,6 +796,7 @@
                 } else {
                     mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
                     video.srcObject = mainStream;
+                    vrClones.forEach(clone => clone.srcObject = mainStream);
                     subVideo.style.display = 'none';
                 }
 
@@ -752,12 +809,10 @@
             }
         }
 
-        // 起動時をかっこよく演出（光るエフェクト＋起動音）
         async function wakeUp() {
             isAwake = true;
             playSciFiSound('startup');
 
-            // 光る演出
             const overlay = document.getElementById('flash-overlay');
             overlay.style.background = 'rgba(0, 255, 255, 0.4)';
             setTimeout(() => {
@@ -821,13 +876,15 @@
             } catch (error) {}
         }
 
-        // 音楽再生
-        function playMusic(query) {
-            speak(`${userName}様、${query}の音楽を再生します。`);
-            window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' 音楽 BGM')}`, '_blank');
+        // 音楽・動画を選んで自動再生（YouTube埋め込みの自動再生対応版）
+        function playMediaDirectly(query) {
+            playSciFiSound('beep');
+            speak(`${userName}様、「${query}」を再生します。`);
+            // YouTubeの埋め込み検索結果（autoplay=1をつけて自動再生を試みる）
+            const embedUrl = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query)}&autoplay=1`;
+            openTab(embedUrl, `PLAY: ${query}`);
         }
 
-        // YouTube：他のタブ（別ウィンドウ）で開くように設定
         function openYouTube(query = '') {
             playSciFiSound('beep');
             if (query) {
@@ -837,6 +894,41 @@
                 speak('YouTubeを別タブで開きます。');
                 window.open('https://www.youtube.com/', '_blank');
             }
+        }
+
+        // 計算機能の追加
+        function calculateExpression(cmd) {
+            try {
+                // 音声特有の表現を記号に置換
+                let clean = cmd
+                    .replace(/たす|足す|\+/g, '+')
+                    .replace(/ひく|引く|\-/g, '-')
+                    .replace(/かける|掛ける|×|\*/g, '*')
+                    .replace(/わる|割る|÷|\//g, '/')
+                    .replace(/パーセント|%/, '/100')
+                    .replace(/は\?|は|の計算|計算して|いくつ|いくら/g, '')
+                    .trim();
+
+                // 数字と算術記号のみ許可して安全に計算
+                if (/^[\d\.\+\-\*\/\(\)\s]+$/.test(clean)) {
+                    let answer = Function('"use strict";return (' + clean + ')')();
+                    if (!isNaN(answer)) {
+                        speak(`計算結果は、${answer}です。`);
+                        return true;
+                    }
+                }
+            } catch (e) {}
+            return false;
+        }
+
+        // タイマーセット・通知読み上げ機能の追加
+        function setTimer(minutes, message) {
+            const ms = minutes * 60 * 1000;
+            speak(`${minutes}分後に、「${message}」とお知らせします。タイマーをセットしました。`);
+            setTimeout(() => {
+                playSciFiSound('beep');
+                speak(`時間になりました。${userName}様、${message}のお時間です。`);
+            }, ms);
         }
 
         function startListening() {
@@ -903,7 +995,34 @@
         function processCommand(cmd) {
             const command = cmd.toLowerCase();
 
-            // 画面拡大・縮小（〇％に、または拡大・縮小）
+            // タイマーセット通知読み上げ機能
+            const timerMatch = cmd.match(/(\d+)(?:分|ふん)後(?:に)?(.+?)(?:と|って)?(?:通知|知らせ|おしらせ|言って)/) ||
+                               cmd.match(/(\d+)(?:分|ふん)後(?:に)?(.+)/);
+            if (timerMatch && (/分後/.test(cmd) || /通知|知らせ/.test(cmd))) {
+                let mins = parseInt(timerMatch[1], 10);
+                let msg = timerMatch[2].replace(/通知して|教えて|おしえて|知らせて|に/g, '').trim() || 'お時間';
+                setTimer(mins, msg);
+                return;
+            }
+
+            // 計算機能
+            if (/計算|たす|ひく|かける|わる|\+|\-|\*|\/|いくつ|いくら/.test(cmd) && /\d/.test(cmd)) {
+                if (calculateExpression(cmd)) {
+                    return;
+                }
+            }
+
+            // VRモード切替
+            if (/vrモード|vr起動|バーチャルリアリティ/i.test(cmd)) {
+                if (/解除|オフ|OFF/i.test(cmd)) {
+                    setVrMode(false);
+                } else {
+                    setVrMode(true);
+                }
+                return;
+            }
+
+            // 画面拡大・縮小
             const zoomMatch = cmd.match(/画面(?:を)?\s*(\d+)(?:%|パーセント)?(?:に)?\s*(拡大|縮小)?/);
             if (zoomMatch) {
                 let percent = parseInt(zoomMatch[1], 10);
@@ -971,16 +1090,16 @@
             }
 
             // YouTube（別タブ）
-            if (/youtube|ユーチューブ/i.test(cmd)) {
-                let kw = cmd.replace(/youtube|ユーチューブ|で|を開いて|開いて|を検索|検索|再生/gi, '').trim();
+            if (/youtube|ユーチューブ/i.test(cmd) && !/再生|かけて|流して/.test(cmd)) {
+                let kw = cmd.replace(/youtube|ユーチューブ|で|を開いて|開いて|を検索|検索/gi, '').trim();
                 openYouTube(kw);
                 return;
             }
 
-            // 音楽再生
-            if (/音楽(を)?(かけて|流して|再生)|(曲|bgm)(を)?(かけて|流して|再生)|流して|聴かせて/i.test(cmd)) {
-                let kw = cmd.replace(/音楽|曲|bgm|を|かけて|流して|再生|聴かせて|聴きたい/gi, '').trim();
-                playMusic(kw || 'リラックス BGM');
+            // 音楽・動画を自動選択して再生
+            if (/音楽|動画|(?:を)?再生|(?:を)?かけて|(?:を)?流して|聴かせて|見せて/i.test(cmd)) {
+                let kw = cmd.replace(/音楽|動画|を|かけて|流して|再生|聴かせて|見せて|聴きたい|見たい|曲|bgm/gi, '').trim();
+                playMediaDirectly(kw || 'リラックス BGM');
                 return;
             }
 
@@ -1059,7 +1178,7 @@
             // 名前記憶
             const nameMatch = cmd.match(/(?:僕|私|オレ|わたし|ぼく)?の名前は\s*(.+?)(?:です|だよ|だ|ー)?$/) ||
                               cmd.match(/(.+?)って呼んで/) ||
-                              cmd.match(/名前を\s*(.+?)(?:に|と)(?:覚えて|変更|設定)/);
+                              cmd.match(/名前を\s*(.+?)(?:|と)(?:覚えて|変更|設定)/);
             if (nameMatch && nameMatch[1] && !cmd.includes('何') && !cmd.includes('覚えてる')) {
                 const extractedName = nameMatch[1].replace(/です|だよ|と|に|とお呼び/g, '').trim();
                 saveUserName(extractedName);
