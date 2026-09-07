@@ -204,6 +204,7 @@
     <div id="hud-container">
         <div id="status-box" class="hud-element">
             <h3>J.A.R.V.I.S. ONLINE</h3>
+            <p>USER: <span id="user-display" style="color:#0f0;">ボス</span></p>
             <p>CAMERA: <span id="cam-status">OFF</span></p>
             <p>MIC: <span id="mic-status">OFF</span></p>
         </div>
@@ -220,7 +221,7 @@
                 <span id="tab-title">J.A.R.V.I.S. DISPLAY TAB</span>
                 <button id="tab-close-btn" onclick="closeTab()">✕ 閉じる</button>
             </div>
-            <iframe id="tab-iframe" src="about:blank"></iframe>
+            <iframe id="tab-iframe" src="about:blank" allow="autoplay; encrypted-media"></iframe>
         </div>
 
         <div id="target-reticle" class="hud-element"></div>
@@ -246,10 +247,27 @@
         let mainStream = null;
         let subStream = null;
 
+        // ユーザー名の読み込み（LocalStorageから復元）
+        let userName = localStorage.getItem('jarvis_user_name') || 'ボス';
+
         // ページ読み込みと同時に音声認識を開始
         window.onload = function() {
+            updateUserDisplay();
             startListening();
         };
+
+        function updateUserDisplay() {
+            document.getElementById('user-display').innerText = userName;
+        }
+
+        // ユーザー名を保存する関数
+        function saveUserName(newName) {
+            if (!newName) return;
+            userName = newName;
+            localStorage.setItem('jarvis_user_name', newName);
+            updateUserDisplay();
+            speak(`承知いたしました。これからは${userName}様とお呼びいたします。`);
+        }
 
         // 字幕出力関数（上書きして字幕風に表示）
         function addLog(text, isJarvis = false) {
@@ -295,6 +313,7 @@
         // 画面上タブを閉じる
         function closeTab() {
             document.getElementById('tab-window').style.display = 'none';
+            document.getElementById('tab-iframe').src = 'about:blank';
         }
 
         // 全カメラストリームを停止
@@ -360,7 +379,7 @@
             document.getElementById('eye-top').style.height = '0';
             document.getElementById('eye-bottom').style.height = '0';
             
-            speak('システムを起動しました。カメラとネットワークに接続します。');
+            speak(`システムを起動しました。お帰りなさいませ、${userName}様。`);
 
             // カメラの起動（初期値: インカメラ）
             await setupCamera('user');
@@ -428,6 +447,14 @@
             }
         }
 
+        // 音楽再生関数（YouTube Embedプレイヤーをタブ内に生成）
+        function playMusic(query) {
+            speak(`${userName}様、${query}の音楽を再生します。`);
+            // iframeで埋め込み表示が許可されているYouTube Embed Searchを利用
+            const embedUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(query + ' 音楽 BGM')}`;
+            openTab(embedUrl, `MUSIC: ${query}`);
+        }
+
         // 音声認識の待機
         function startListening() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -446,14 +473,13 @@
                     const lastIndex = event.results.length - 1;
                     const transcript = event.results[lastIndex][0].transcript.trim();
                     
-                    // 空文字や2文字未満の雑音は無視
                     if (!transcript || transcript.length < 2) {
                         return;
                     }
 
                     if (!isAwake) {
-                        // スリープ中の起動コマンド判定
-                        if (transcript.includes('起動') || transcript.includes('ジャーヴィス') || transcript.includes('ジャビス') || transcript.toLowerCase().includes('jarvis') || transcript.toLowerCase().includes('javis')) {
+                        // スリープ中の起動コマンド判定（柔軟に対応）
+                        if (/起動|ジャーヴィス|ジャビス|jarvis|javis|起きて|ヘイ/i.test(transcript)) {
                             wakeUp();
                         }
                     } else {
@@ -477,16 +503,73 @@
             }
         }
 
-        // コマンド処理
-        function processCommand(command) {
-            // --- カメラ切り替え機能 ---
-            if (command.includes('アウトカメラ') || command.includes('背面カメラ') || command.includes('外のカメラ') || command.includes('外カメラ')) {
+        // AI風・柔軟な自然言語処理コマンド判定
+        function processCommand(cmd) {
+            const command = cmd.toLowerCase();
+
+            // --- 1. 名前の設定と記憶 ---
+            const nameMatch = cmd.match(/(?:僕|私|オレ|わたし|ぼく)?の名前は\s*(.+?)(?:です|だよ|だ|ー)?$/) ||
+                              cmd.match(/(.+?)って呼んで/) ||
+                              cmd.match(/名前を\s*(.+?)(?:に|と)(?:覚えて|変更|設定)/);
+            if (nameMatch && nameMatch[1] && !cmd.includes('何') && !cmd.includes('覚えてる')) {
+                const extractedName = nameMatch[1].replace(/です|だよ|と|に|とお呼び/g, '').trim();
+                saveUserName(extractedName);
+                return;
+            }
+
+            if (/僕の名前|私の名前|名前(を|は)?(覚えてる|知ってる|何|なんだっけ)/.test(cmd)) {
+                speak(`はい、存じております。${userName}様ですね。`);
+                return;
+            }
+
+            // --- 2. 音楽の再生（柔軟な意図読み取り） ---
+            const musicMatch = cmd.match(/(.+?)の?(?:音楽|曲|bgm|ミュージック|ソング)(?:を|でも)?(?:流して|かけて|再生|聴きたい|流す)/) ||
+                               cmd.match(/(.+?)を(?:流して|かけて|再生して)/);
+            if (musicMatch && musicMatch[1] && !cmd.includes('カメラ') && !cmd.includes('タブ')) {
+                const musicKeyword = musicMatch[1].replace(/何か|なんかに|適当に|いい感じの/g, '').trim();
+                playMusic(musicKeyword || '作業用BGM');
+                return;
+            } else if (/音楽.*(流して|かけて|再生)|曲.*(流して|かけて)/.test(cmd)) {
+                playMusic('リラックス BGM');
+                return;
+            }
+
+            // --- 3. Webサイト／タブ表示（埋め込みブロック対策済みURL） ---
+            if (/youtube|ユーチューブ/i.test(cmd)) {
+                speak('画面上にYouTubeを表示します。');
+                openTab('https://www.youtube-nocookie.com/embed?listType=search&list=人気動画', 'YouTube');
+                return;
+            } else if (/google|グーグル|検索画面|ブラウザ/i.test(cmd) && /開|表示|見せ/.test(cmd)) {
+                speak('画面上に検索画面を表示します。');
+                openTab('https://html.duckduckgo.com/html/', 'Search Engine');
+                return;
+            } else if (/twitter|ツイッター|\bx\b|エックス/i.test(cmd) && /開|表示|見せ/.test(cmd)) {
+                speak('画面上にX（Twitter）のトレンド表示を読み込みます。');
+                openTab('https://twitframe.com/', 'X / Twitter');
+                return;
+            }
+
+            // --- 4. タブ表示・非表示の柔軟判定 ---
+            if (/(?:タブ|画面).*(?:表示|開|見せ|出し|つけ)/.test(cmd)) {
+                speak('画面上にタブを表示しました。操作が可能です。');
+                openTab(document.getElementById('tab-iframe').src || 'https://ja.m.wikipedia.org', 'DISPLAY TAB');
+                return;
+            } else if (/(?:タブ|画面).*(?:消|閉|隠|非表示|いらない)/.test(cmd)) {
+                speak('タブを閉じました。');
+                closeTab();
+                return;
+            }
+
+            // --- 5. カメラ切り替え判定 ---
+            if (/アウトカメラ|背面|外.*カメラ/.test(cmd)) {
                 speak('アウトカメラに切り替えます。右下にインカメラを表示します。');
                 setupCamera('environment');
-            } else if (command.includes('インカメラ') || command.includes('前面カメラ') || command.includes('内カメラ') || command.includes('元のカメラ')) {
+                return;
+            } else if (/インカメラ|前面|内.*カメラ|元.*カメラ/.test(cmd)) {
                 speak('インカメラに切り替えます。');
                 setupCamera('user');
-            } else if (command.includes('カメラ切り替え') || command.includes('カメラを切り替え') || command.includes('カメラ変えて')) {
+                return;
+            } else if (/カメラ.*(?:切|変|チェンジ)/.test(cmd)) {
                 if (currentFacingMode === 'user') {
                     speak('アウトカメラに切り替えます。');
                     setupCamera('environment');
@@ -494,71 +577,52 @@
                     speak('インカメラに切り替えます。');
                     setupCamera('user');
                 }
+                return;
             }
 
-            // --- サイト・アプリを画面上タブで開く機能 ---
-            else if (command.includes('YouTube') && (command.includes('開いて') || command.includes('見せて'))) {
-                speak('画面上にYouTubeを表示します。');
-                openTab('https://www.youtube.com', 'YouTube');
-            } else if ((command.includes('Google') || command.includes('グーグル')) && command.includes('開いて')) {
-                speak('画面上にGoogleを表示します。');
-                openTab('https://www.google.com', 'Google');
-            } else if ((command.includes('Twitter') || command.includes('X') || command.includes('エックス')) && command.includes('開いて')) {
-                speak('画面上にXを表示します。');
-                openTab('https://twitter.com', 'X');
-            } 
-            
-            // --- タブの表示・非表示コントロール ---
-            else if (command.includes('タブを表示') || command.includes('画面を表示') || command.includes('タブを開いて')) {
-                speak('画面上にタブを表示しました。操作が可能です。');
-                openTab(document.getElementById('tab-iframe').src || 'https://ja.m.wikipedia.org', 'DISPLAY TAB');
-            } else if (command.includes('タブを消して') || command.includes('タブを閉じて') || command.includes('画面を閉じて')) {
-                speak('タブを閉じました。');
-                closeTab();
-            }
-
-            // --- 検索して解説・画面上タブ表示機能 ---
-            else if (command.includes('について教えて') || command.includes('とは何') || command.includes('を検索して') || command.includes('を調べて') || command.includes('について調べて')) {
-                let keyword = command.replace('について教えて', '').replace('について調べ', '').replace('について', '').replace('とは何', '').replace('とは', '').replace('を検索して', '').replace('検索して', '').replace('を調べて', '').replace('調べて', '').trim();
+            // --- 6. 検索・Wikipedia調べる判定 ---
+            if (/(?:について)?(?:教えて|調べ|検索)|とは何|とは/i.test(cmd)) {
+                let keyword = cmd.replace(/について|教えて|調べ|検索|とは何|とは|を|て/g, '').trim();
                 if (keyword.endsWith('の')) keyword = keyword.slice(0, -1);
                 
                 if (keyword) {
                     searchAndExplain(keyword);
                 } else {
-                    speak('検索したいキーワードを聞き取れませんでした。もう一度お願いします。');
+                    speak('検索したいキーワードを聞き取れませんでした。もう一度おっしゃってください。');
                 }
+                return;
             }
 
-            // --- 会話・質問に答える機能 ---
-            else if (command.includes('こんにちは') || command.includes('おはよう')) {
-                speak('こんにちは、ボス。本日のシステムはすべて正常に稼働しています。');
-            } else if (command.includes('ありがとう') || command.includes('サンキュー')) {
-                speak('どういたしまして。お役に立てて光栄です。');
-            } else if (command.includes('調子はどう') || command.includes('元気')) {
-                speak('システムのパフォーマンスは100%、すべて順調です。');
-            } else if (command.includes('誰が作った')) {
-                speak('私は優秀な開発者であるあなたによってプログラムされました。');
-            } else if (command.includes('今日何日') || command.includes('日付')) {
+            // --- 7. 会話・応答 ---
+            if (/こんにちは|おはよう|こんばんは|やあ/.test(cmd)) {
+                speak(`こんにちは、${userName}様。本日もシステムはすべて順調です。`);
+            } else if (/ありがとう|サンキュー|感謝/.test(cmd)) {
+                speak(`どういたしまして、${userName}様。お役に立てて光栄です。`);
+            } else if (/調子|元気|ステータス/.test(cmd)) {
+                speak('システムのパフォーマンスは100%、すべて正常です。');
+            } else if (/誰が作|制作者|開発者/.test(cmd)) {
+                speak(`私は優秀な開発者である${userName}様によってプログラムされました。`);
+            } else if (/今日.*日|日付|カレンダー/.test(cmd)) {
                 const now = new Date();
                 speak(`本日は${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日です。`);
-            } else if (command.includes('時間') || command.includes('何時')) {
+            } else if (/時間|何時/.test(cmd)) {
                 const now = new Date();
                 speak(`現在の時刻は${now.getHours()}時${now.getMinutes()}分です。`);
-            } else if (command.includes('天気')) {
+            } else if (/天気|気温/.test(cmd)) {
                 if (currentWeatherJa !== "不明") {
                     speak(`現在の天気は${currentWeatherJa}、気温は${currentTemp}度です。`);
                 } else {
-                     speak('申し訳ありません。現在、天気の情報を取得できていません。');
+                    speak('申し訳ありません。現在天気の情報を取得できておりません。');
                 }
-            } else if (command.includes('スキャン')) {
+            } else if (/スキャン|分析|解析/.test(cmd)) {
                 speak('周囲の環境をスキャンしています... 脅威は検出されませんでした。');
                 document.getElementById('target-reticle').style.borderColor = '#0f0';
                 setTimeout(() => document.getElementById('target-reticle').style.borderColor = '#0ff', 3000);
             } 
             
-            // --- シャットダウン ---
-            else if (command.includes('終了') || command.includes('シャットダウン') || command.includes('スリープ')) {
-                speak('システムをスリープ状態に移行します。おやすみなさいませ、ボス。');
+            // --- 8. シャットダウン・スリープ ---
+            else if (/終了|シャットダウン|スリープ|おやすみ|バイバイ/.test(cmd)) {
+                speak(`システムをスリープ状態に移行します。おやすみなさいませ、${userName}様。`);
                 isAwake = false;
                 closeTab();
                 
@@ -572,7 +636,7 @@
                 document.getElementById('cam-status').style.color = '#0ff';
                 setTimeout(() => addLog("システムはスリープ状態です。「起動」または「ジャーヴィス」と話しかけてください。"), 1000);
             } else {
-                speak('すみません、そのコマンドに対する回答がデータベースにありません。');
+                speak(`申し訳ありません、${userName}様。その命令の意図を正確に理解できませんでした。`);
             }
         }
     </script>
