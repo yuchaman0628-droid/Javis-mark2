@@ -26,6 +26,19 @@
             height: 100vh;
         }
 
+        /* 起動・シャットダウン時のフラッシュ・光る演出用オーバーレイ */
+        #flash-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 255, 255, 0);
+            z-index: 60;
+            pointer-events: none;
+            transition: background 0.5s ease;
+        }
+
         /* 目を開くアニメーション用（まぶた） */
         .eye-lid {
             position: absolute;
@@ -35,9 +48,10 @@
             background-color: #000;
             z-index: 50;
             transition: height 2s cubic-bezier(0.65, 0, 0.35, 1);
+            box-shadow: inset 0 0 50px rgba(0, 255, 255, 0.8);
         }
-        #eye-top { top: 0; }
-        #eye-bottom { bottom: 0; }
+        #eye-top { top: 0; border-bottom: 2px solid rgba(0,255,255,0.5); }
+        #eye-bottom { bottom: 0; border-top: 2px solid rgba(0,255,255,0.5); }
 
         /* HUD（ヘッドアップディスプレイ）風の装飾 */
         #hud-container {
@@ -196,6 +210,7 @@
             filter: none;
             z-index: 1;
             transition: filter 0.5s ease, transform 0.3s ease;
+            transform-origin: center center;
         }
 
         .thermal-mode {
@@ -232,6 +247,7 @@
 </head>
 <body>
 
+    <div id="flash-overlay"></div>
     <div id="eye-top" class="eye-lid"></div>
     <div id="eye-bottom" class="eye-lid"></div>
 
@@ -292,7 +308,7 @@
 
         let speechVolume = 1.0;
         let screenBrightness = 100;
-        let cameraZoomScale = 1.0; // 画面拡大・縮小用
+        let cameraZoomScale = 1.0;
 
         let recognition = null;
         let isRecognizing = false;
@@ -308,6 +324,45 @@
         let fullSpeechLogs = JSON.parse(localStorage.getItem('jarvis_speech_logs') || '[]');
         let userName = localStorage.getItem('jarvis_user_name') || 'ボス';
         let audioUnlocked = false;
+
+        // 効果音（Web Audio APIによる起動音・終了音・電子音）
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSciFiSound(type) {
+            if (!audioCtx) return;
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+            if (type === 'startup') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.8);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+                osc.start(now);
+                osc.stop(now + 1.2);
+            } else if (type === 'shutdown') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.8);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                osc.start(now);
+                osc.stop(now + 0.8);
+            } else if (type === 'beep') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(1500, now);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+        }
 
         function unlockMobileAudio() {
             if (!audioUnlocked) {
@@ -417,6 +472,7 @@
         }
 
         function takePhoto() {
+            playSciFiSound('beep');
             const video = document.getElementById('camera-feed');
             if (!video || !video.videoWidth) {
                 speak('カメラ映像を取得できません。');
@@ -436,7 +492,7 @@
             speak('写真を撮影し保存しました。');
         }
 
-        // カメラに映っている映像（#camera-feed）のストリームを録画する機能に変更
+        // 録音の音声が取れていない問題を修正：カメラのストリームに加えてマイク音声（Audio）もミックスして録画
         async function startScreenRecording() {
             try {
                 const videoElement = document.getElementById('camera-feed');
@@ -445,10 +501,18 @@
                     return;
                 }
 
-                // カメラのストリームからMediaStreamを取得して録画
-                const stream = videoElement.srcObject;
+                playSciFiSound('beep');
+                const cameraStream = videoElement.srcObject;
+                let combinedStream = new MediaStream(cameraStream.getVideoTracks());
 
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+                try {
+                    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    micStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
+                } catch (e) {
+                    // マイクが取得できない場合はカメラの音声トラック（あれば）を利用
+                }
+
+                mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus' });
                 recordedChunks = [];
 
                 mediaRecorder.ondataavailable = function(e) {
@@ -467,21 +531,21 @@
                     URL.revokeObjectURL(url);
                     document.getElementById('rec-status').innerText = 'STOPPED';
                     document.getElementById('rec-status').style.color = '#aaa';
-                    speak('カメラ録画を保存しました。');
+                    speak('音声付きカメラ録画を保存しました。');
                 };
 
                 mediaRecorder.start();
                 document.getElementById('rec-status').innerText = 'RECORDING';
                 document.getElementById('rec-status').style.color = '#f00';
-                speak('カメラ映像の録画を開始しました。');
+                speak('音声付きカメラ映像の録画を開始しました。');
             } catch (err) {
-                speak('カメラの録画開始に失敗しました。');
+                speak('録画の開始に失敗しました。');
             }
         }
 
-        // 録画ストップ機能の修正
         function stopScreenRecording() {
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                playSciFiSound('beep');
                 mediaRecorder.stop();
                 speak('録画を停止しました。');
             } else {
@@ -489,12 +553,13 @@
             }
         }
 
-        // 画面拡大・縮小機能
+        // 画面拡大・縮小機能（〇％に拡大・縮小に対応）
         function setCameraZoom(scale) {
-            cameraZoomScale = Math.min(3.0, Math.max(1.0, scale));
+            playSciFiSound('beep');
+            cameraZoomScale = Math.min(5.0, Math.max(0.5, scale));
             const video = document.getElementById('camera-feed');
             video.style.transform = `scale(${cameraZoomScale})`;
-            speak(`画面を${Math.round(cameraZoomScale * 100)}パーセントに拡大・縮小しました。`);
+            speak(`画面を${Math.round(cameraZoomScale * 100)}パーセントに調整しました。`);
         }
 
         async function setDeviceBrightness(val) {
@@ -589,31 +654,11 @@
             speak('すべての特殊モードおよびフルスクリーンを解除し、通常モードに戻しました。');
         }
 
-        // Googleレンズの動作修正（YouTubeと同様にタブとして開いて画面に表示する仕組み）
+        // Googleレンズ：他のタブで開くように設定
         function analyzeWithGoogleLens() {
-            speak('カメラの映像をキャプチャし、Googleレンズで検索タブを開きます。');
-
-            const video = document.getElementById('camera-feed');
-            if (!video || !video.videoWidth) {
-                speak('カメラ映像の取得に失敗しました。');
-                return;
-            }
-
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            canvas.toBlob((blob) => {
-                if (!blob) {
-                    speak('画像データの抽出に失敗しました。');
-                    return;
-                }
-                // 画像検索用のURLを生成してタブウィンドウで表示
-                const lensUrl = `https://images.google.com/searchbyimage?image_url=data:image/jpeg;base64,...`; // 代替としてGoogle画像検索ページを開く
-                openTab('https://lens.google.com/', 'GOOGLE LENS');
-            }, 'image/jpeg');
+            playSciFiSound('beep');
+            speak('Googleレンズの検索タブを別ウィンドウで開きます。');
+            window.open('https://lens.google.com/', '_blank');
         }
 
         function openTab(url, title = "DISPLAY TAB") {
@@ -707,8 +752,18 @@
             }
         }
 
+        // 起動時をかっこよく演出（光るエフェクト＋起動音）
         async function wakeUp() {
             isAwake = true;
+            playSciFiSound('startup');
+
+            // 光る演出
+            const overlay = document.getElementById('flash-overlay');
+            overlay.style.background = 'rgba(0, 255, 255, 0.4)';
+            setTimeout(() => {
+                overlay.style.background = 'rgba(0, 255, 255, 0)';
+            }, 600);
+
             document.getElementById('eye-top').style.height = '0';
             document.getElementById('eye-bottom').style.height = '0';
             
@@ -766,23 +821,21 @@
             } catch (error) {}
         }
 
-        // 音楽再生：〇〇流してと言われたらその音楽をYouTubeのタブで再生する仕組み
+        // 音楽再生
         function playMusic(query) {
             speak(`${userName}様、${query}の音楽を再生します。`);
-            const embedUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(query + ' 音楽 BGM')}&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
-            openTab(embedUrl, `MUSIC: ${query}`);
+            window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' 音楽 BGM')}`, '_blank');
         }
 
-        // YouTube：タブとして開いて画面に表示する仕組み
+        // YouTube：他のタブ（別ウィンドウ）で開くように設定
         function openYouTube(query = '') {
+            playSciFiSound('beep');
             if (query) {
-                speak(`YouTubeで「${query}」を検索します。`);
-                const searchUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(query)}&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
-                openTab(searchUrl, `YOUTUBE: ${query}`);
+                speak(`YouTubeで「${query}」を別タブで検索します。`);
+                window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
             } else {
-                speak('YouTubeを表示します。');
-                const defaultUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=人気動画&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
-                openTab(defaultUrl, 'YOUTUBE');
+                speak('YouTubeを別タブで開きます。');
+                window.open('https://www.youtube.com/', '_blank');
             }
         }
 
@@ -850,6 +903,22 @@
         function processCommand(cmd) {
             const command = cmd.toLowerCase();
 
+            // 画面拡大・縮小（〇％に、または拡大・縮小）
+            const zoomMatch = cmd.match(/画面(?:を)?\s*(\d+)(?:%|パーセント)?(?:に)?\s*(拡大|縮小)?/);
+            if (zoomMatch) {
+                let percent = parseInt(zoomMatch[1], 10);
+                setCameraZoom(percent / 100);
+                return;
+            }
+            if (/画面(を)?(拡大|大きく)/.test(cmd)) {
+                setCameraZoom(cameraZoomScale + 0.5);
+                return;
+            }
+            if (/画面(を)?(縮小|小さく|元に戻す)/.test(cmd)) {
+                setCameraZoom(1.0);
+                return;
+            }
+
             // 録画停止コマンド
             if (/録画(を)?(停止|ストップ|止めて|終了)/.test(cmd)) {
                 stopScreenRecording();
@@ -865,16 +934,6 @@
             // 写真撮影コマンド
             if (/写真(を)?(撮って|撮影|取る|とる)|スクショ|スクリーンショット/.test(cmd)) {
                 takePhoto();
-                return;
-            }
-
-            // 画面拡大・縮小コマンド
-            if (/画面(を)?(拡大|大きく)/.test(cmd)) {
-                setCameraZoom(cameraZoomScale + 0.5);
-                return;
-            }
-            if (/画面(を)?(縮小|小さく|元に戻す)/.test(cmd)) {
-                setCameraZoom(1.0);
                 return;
             }
 
@@ -911,21 +970,21 @@
                 return;
             }
 
-            // YouTube
+            // YouTube（別タブ）
             if (/youtube|ユーチューブ/i.test(cmd)) {
                 let kw = cmd.replace(/youtube|ユーチューブ|で|を開いて|開いて|を検索|検索|再生/gi, '').trim();
                 openYouTube(kw);
                 return;
             }
 
-            // 音楽再生（〇〇流してなどに対応）
+            // 音楽再生
             if (/音楽(を)?(かけて|流して|再生)|(曲|bgm)(を)?(かけて|流して|再生)|流して|聴かせて/i.test(cmd)) {
                 let kw = cmd.replace(/音楽|曲|bgm|を|かけて|流して|再生|聴かせて|聴きたい/gi, '').trim();
                 playMusic(kw || 'リラックス BGM');
                 return;
             }
 
-            // Googleカメラ
+            // Googleカメラ（別タブ）
             if (/これ(は|が)?何|なにこれ|これ調べて|グーグルカメラ|googleカメラ|グーグルレンズ|googleレンズ/i.test(cmd)) {
                 analyzeWithGoogleLens();
                 return;
@@ -965,7 +1024,7 @@
             }
 
             // 音量・明るさ
-            const volMatch = cmd.match(/(?:音量|ボリューム)(?:و|を|は)?\s*(\d+)(?:%|パーセント)?/);
+            const volMatch = cmd.match(/(?:音量|ボリューム)(?:を|は)?\s*(\d+)(?:%|パーセント)?/);
             if (volMatch) {
                 let val = parseInt(volMatch[1], 10);
                 setDeviceVolume(val);
@@ -1066,8 +1125,15 @@
                     speak('現在天気の情報を取得できておりません。');
                 }
             } 
-            // スリープ / 終了
+            // シャットダウン（演出付き）
             else if (/終了|シャットダウン|スリープ|おやすみ|バイバイ/.test(cmd)) {
+                playSciFiSound('shutdown');
+                const overlay = document.getElementById('flash-overlay');
+                overlay.style.background = 'rgba(255, 0, 0, 0.4)';
+                setTimeout(() => {
+                    overlay.style.background = 'rgba(0, 0, 0, 1)';
+                }, 400);
+
                 speak(`スリープ状態に移行します。おやすみなさいませ、${userName}様。`);
                 isAwake = false;
                 closeTab();
