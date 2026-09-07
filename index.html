@@ -678,7 +678,7 @@
             }
         }
 
-        // VRモードの追加
+        // VRモード
         function setVrMode(enable, silent = false) {
             isVrMode = enable;
             const vrWrapper = document.getElementById('vr-wrapper');
@@ -876,15 +876,7 @@
             } catch (error) {}
         }
 
-        // 音楽・動画を選んで自動再生（YouTube埋め込みの自動再生対応版）
-        function playMediaDirectly(query) {
-            playSciFiSound('beep');
-            speak(`${userName}様、「${query}」を再生します。`);
-            // YouTubeの埋め込み検索結果（autoplay=1をつけて自動再生を試みる）
-            const embedUrl = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query)}&autoplay=1`;
-            openTab(embedUrl, `PLAY: ${query}`);
-        }
-
+        // YouTubeや音楽検索は別タブを開いて検索・再生する方式に修正
         function openYouTube(query = '') {
             playSciFiSound('beep');
             if (query) {
@@ -896,10 +888,9 @@
             }
         }
 
-        // 計算機能の追加
+        // 計算機能
         function calculateExpression(cmd) {
             try {
-                // 音声特有の表現を記号に置換
                 let clean = cmd
                     .replace(/たす|足す|\+/g, '+')
                     .replace(/ひく|引く|\-/g, '-')
@@ -909,7 +900,6 @@
                     .replace(/は\?|は|の計算|計算して|いくつ|いくら/g, '')
                     .trim();
 
-                // 数字と算術記号のみ許可して安全に計算
                 if (/^[\d\.\+\-\*\/\(\)\s]+$/.test(clean)) {
                     let answer = Function('"use strict";return (' + clean + ')')();
                     if (!isNaN(answer)) {
@@ -921,7 +911,7 @@
             return false;
         }
 
-        // タイマーセット・通知読み上げ機能の追加
+        // タイマーセット・通知読み上げ機能
         function setTimer(minutes, message) {
             const ms = minutes * 60 * 1000;
             speak(`${minutes}分後に、「${message}」とお知らせします。タイマーをセットしました。`);
@@ -1023,7 +1013,7 @@
             }
 
             // 画面拡大・縮小
-            const zoomMatch = cmd.match(/画面(?:を)?\s*(\d+)(?:%|パーセント)?(?:に)?\s*(拡大|縮小)?/);
+            const zoomMatch = cmd.match(/画面(?:を)?\s*(\d+)(?:%|パーセント)?(?:in)?\s*(拡大|縮小)?/);
             if (zoomMatch) {
                 let percent = parseInt(zoomMatch[1], 10);
                 setCameraZoom(percent / 100);
@@ -1089,17 +1079,10 @@
                 return;
             }
 
-            // YouTube（別タブ）
-            if (/youtube|ユーチューブ/i.test(cmd) && !/再生|かけて|流して/.test(cmd)) {
-                let kw = cmd.replace(/youtube|ユーチューブ|で|を開いて|開いて|を検索|検索/gi, '').trim();
+            // YouTube・音楽の再生（別タブ検索）
+            if (/youtube|ユーチューブ|音楽|動画|再生|かけて|流して|聴かせて|見せて/i.test(cmd)) {
+                let kw = cmd.replace(/youtube|ユーチューブ|音楽|動画|を|かけて|流して|再生|聴かせて|見せて|聴きたい|見たい|曲|bgm|で|を開いて|開いて|を検索|検索/gi, '').trim();
                 openYouTube(kw);
-                return;
-            }
-
-            // 音楽・動画を自動選択して再生
-            if (/音楽|動画|(?:を)?再生|(?:を)?かけて|(?:を)?流して|聴かせて|見せて/i.test(cmd)) {
-                let kw = cmd.replace(/音楽|動画|を|かけて|流して|再生|聴かせて|見せて|聴きたい|見たい|曲|bgm/gi, '').trim();
-                playMediaDirectly(kw || 'リラックス BGM');
                 return;
             }
 
