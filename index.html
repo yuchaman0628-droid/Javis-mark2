@@ -2,16 +2,19 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>J.A.R.V.I.S. System</title>
     <style>
         body {
             margin: 0;
             padding: 0;
             background-color: #000;
-            color: #0ff;
-            font-family: 'Courier New', Courier, monospace;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             overflow: hidden;
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         /* 目を開くアニメーション用（まぶた） */
@@ -34,7 +37,8 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            border: 5px solid rgba(0, 255, 255, 0.3);
+            height: 100dvh;
+            border: 2px solid rgba(255, 255, 255, 0.2);
             box-sizing: border-box;
             pointer-events: none;
             z-index: 10;
@@ -42,10 +46,11 @@
 
         .hud-element {
             position: absolute;
-            border: 1px solid #0ff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
             padding: 10px;
-            background: rgba(0, 20, 40, 0.5);
-            box-shadow: 0 0 10px #0ff;
+            background: rgba(0, 0, 0, 0.65);
+            border-radius: 6px;
+            box-sizing: border-box;
         }
 
         #status-box { top: 20px; left: 20px; width: 250px; }
@@ -59,9 +64,8 @@
             transform: translateX(-50%);
             width: 75vw;
             height: 55vh;
-            background: rgba(0, 15, 30, 0.95);
-            border: 2px solid #0ff;
-            box-shadow: 0 0 20px #0ff;
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid #555;
             z-index: 40;
             display: none;
             pointer-events: auto; /* クリックやスクロールなどのマウス操作を有効化 */
@@ -70,26 +74,26 @@
         }
 
         #tab-header {
-            background: rgba(0, 255, 255, 0.2);
-            color: #0ff;
+            background: #222;
+            color: #fff;
             padding: 8px 15px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-weight: bold;
-            border-bottom: 1px solid #0ff;
+            border-bottom: 1px solid #444;
         }
 
         #tab-close-btn {
             background: transparent;
-            border: 1px solid #0ff;
-            color: #0ff;
+            border: 1px solid #888;
+            color: #fff;
             cursor: pointer;
             padding: 2px 8px;
             border-radius: 4px;
         }
         #tab-close-btn:hover {
-            background: #0ff;
+            background: #fff;
             color: #000;
         }
 
@@ -113,17 +117,16 @@
             justify-content: center;
             border: none;
             background: transparent;
-            box-shadow: none;
         }
 
         #log-content {
             font-size: 20px;
-            background: rgba(0, 20, 40, 0.8);
-            border: 1px solid #0ff;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #555;
             padding: 15px 30px;
             border-radius: 10px;
             margin-bottom: 15px;
-            box-shadow: 0 0 10px #0ff;
+            word-break: break-all;
         }
 
         /* ボイスメーター */
@@ -135,7 +138,7 @@
         }
         .meter-bar {
             width: 10px;
-            background-color: #0ff;
+            background-color: #fff;
             animation: bounce 0.4s infinite alternate;
         }
         .meter-bar:nth-child(1) { height: 15px; animation-delay: 0.0s; }
@@ -154,7 +157,7 @@
             transform: translate(-50%, -50%);
             width: 300px; height: 300px;
             border-radius: 50%;
-            border: 2px dashed #0ff;
+            border: 2px dashed rgba(255, 255, 255, 0.4);
             animation: rotate 10s linear infinite;
         }
 
@@ -166,8 +169,9 @@
         #camera-feed {
             width: 100vw;
             height: 100vh;
+            height: 100dvh;
             object-fit: cover;
-            filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.7);
+            filter: none;
             z-index: 1;
         }
 
@@ -178,14 +182,66 @@
             right: 20px;
             width: 180px;
             height: 135px;
-            border: 2px solid #0ff;
-            box-shadow: 0 0 15px #0ff;
+            border: 2px solid #fff;
             border-radius: 8px;
             object-fit: cover;
-            filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.8);
+            filter: none;
             z-index: 35;
             display: none;
             pointer-events: none;
+        }
+
+        /* スマホ用レイアウト調整 (画面幅 600px 以下) */
+        @media (max-width: 600px) {
+            #status-box {
+                top: 10px;
+                left: 10px;
+                width: auto;
+                max-width: 46vw;
+                font-size: 11px;
+                padding: 6px;
+            }
+            #status-box h3 { font-size: 12px; margin: 2px 0; }
+            #status-box p { margin: 2px 0; }
+
+            #info-box {
+                top: 10px;
+                right: 10px;
+                width: auto;
+                max-width: 46vw;
+                font-size: 11px;
+                padding: 6px;
+            }
+            #info-box h3 { font-size: 12px; margin: 2px 0; }
+            #info-box p { margin: 2px 0; }
+
+            #tab-window {
+                top: 55px;
+                width: 92vw;
+                height: 60vh;
+            }
+
+            #target-reticle {
+                width: 200px;
+                height: 200px;
+            }
+
+            #log-box {
+                width: 90%;
+                bottom: 15px;
+            }
+
+            #log-content {
+                font-size: 14px;
+                padding: 10px 15px;
+            }
+
+            #sub-camera-feed {
+                width: 110px;
+                height: 85px;
+                bottom: 10px;
+                right: 10px;
+            }
         }
     </style>
 </head>
@@ -228,7 +284,7 @@
         
         <!-- 字幕・ボイスメーター -->
         <div id="log-box" class="hud-element">
-            <div id="log-content">マイクの許可後、「起動」または「ジャーヴィス」と呼びかけてください。</div>
+            <div id="log-content">画面をタップしてマイク・音声を許可後、「起動」または「ジャーヴィス」と呼びかけてください。</div>
             <div id="voice-meter">
                 <div class="meter-bar"></div>
                 <div class="meter-bar"></div>
@@ -250,10 +306,27 @@
         // ユーザー名の読み込み（LocalStorageから復元）
         let userName = localStorage.getItem('jarvis_user_name') || 'ボス';
 
-        // ページ読み込みと同時に音声認識を開始
+        // スマホブラウザの音声制限対策（タップ操作で音声・マイク有効化）
+        let audioUnlocked = false;
+        function unlockMobileAudio() {
+            if (!audioUnlocked) {
+                audioUnlocked = true;
+                if (window.speechSynthesis) {
+                    const dummy = new SpeechSynthesisUtterance('');
+                    window.speechSynthesis.speak(dummy);
+                }
+                startListening();
+            }
+        }
+
+        // ページ読み込みと同時に各種設定
         window.onload = function() {
             updateUserDisplay();
             startListening();
+            
+            // スマホでのタップ制限解除イベントを登録
+            document.body.addEventListener('click', unlockMobileAudio, { once: true });
+            document.body.addEventListener('touchstart', unlockMobileAudio, { once: true });
         };
 
         function updateUserDisplay() {
@@ -617,7 +690,7 @@
             } else if (/スキャン|分析|解析/.test(cmd)) {
                 speak('周囲の環境をスキャンしています... 脅威は検出されませんでした。');
                 document.getElementById('target-reticle').style.borderColor = '#0f0';
-                setTimeout(() => document.getElementById('target-reticle').style.borderColor = '#0ff', 3000);
+                setTimeout(() => document.getElementById('target-reticle').style.borderColor = 'rgba(255,255,255,0.4)', 3000);
             } 
             
             // --- 8. シャットダウン・スリープ ---
@@ -633,7 +706,7 @@
                 // カメラ停止
                 stopAllCameras();
                 document.getElementById('cam-status').innerText = 'OFF';
-                document.getElementById('cam-status').style.color = '#0ff';
+                document.getElementById('cam-status').style.color = '#fff';
                 setTimeout(() => addLog("システムはスリープ状態です。「起動」または「ジャーヴィス」と話しかけてください。"), 1000);
             } else {
                 speak(`申し訳ありません、${userName}様。その命令の意図を正確に理解できませんでした。`);
