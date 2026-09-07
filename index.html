@@ -298,6 +298,11 @@
                     const lastIndex = event.results.length - 1;
                     const transcript = event.results[lastIndex][0].transcript.trim();
                     
+                    // 【修正点】空文字や2文字未満の雑音・咳払いなどは無視して処理しない
+                    if (!transcript || transcript.length < 2) {
+                        return;
+                    }
+
                     if (!isAwake) {
                         // スリープ中の起動コマンド判定
                         if (transcript.includes('起動') || transcript.includes('ジャーヴィス') || transcript.includes('ジャビス') || transcript.toLowerCase().includes('jarvis') || transcript.toLowerCase().includes('javis')) {
