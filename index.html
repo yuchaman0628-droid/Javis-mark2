@@ -15,6 +15,7 @@
             touch-action: manipulation;
             -webkit-user-select: none;
             user-select: none;
+            transition: filter 0.3s ease;
         }
 
         /* 目を開くアニメーション用（まぶた） */
@@ -38,17 +39,19 @@
             width: 100vw;
             height: 100vh;
             height: 100dvh;
-            border: 2px solid rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.15);
             box-sizing: border-box;
             pointer-events: none;
             z-index: 10;
+            transform-origin: center center;
+            transition: transform 0.3s ease;
         }
 
         .hud-element {
             position: absolute;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.25);
             padding: 10px;
-            background: rgba(0, 0, 0, 0.65);
+            background: transparent;
             border-radius: 6px;
             box-sizing: border-box;
         }
@@ -64,24 +67,25 @@
             transform: translateX(-50%);
             width: 75vw;
             height: 55vh;
-            background: rgba(20, 20, 20, 0.95);
-            border: 1px solid #555;
+            background: rgba(10, 10, 10, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.3);
             z-index: 40;
             display: none;
             pointer-events: auto; /* クリックやスクロールなどのマウス操作を有効化 */
             border-radius: 8px;
             overflow: hidden;
+            backdrop-filter: blur(5px);
         }
 
         #tab-header {
-            background: #222;
+            background: rgba(30, 30, 30, 0.8);
             color: #fff;
             padding: 8px 15px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-weight: bold;
-            border-bottom: 1px solid #444;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         #tab-close-btn {
@@ -121,12 +125,13 @@
 
         #log-content {
             font-size: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            border: 1px solid #555;
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.3);
             padding: 15px 30px;
             border-radius: 10px;
             margin-bottom: 15px;
             word-break: break-all;
+            text-shadow: 0 0 4px #000;
         }
 
         /* ボイスメーター */
@@ -157,7 +162,7 @@
             transform: translate(-50%, -50%);
             width: 300px; height: 300px;
             border-radius: 50%;
-            border: 2px dashed rgba(255, 255, 255, 0.4);
+            border: 2px dashed rgba(255, 255, 255, 0.3);
             animation: rotate 10s linear infinite;
         }
 
@@ -303,6 +308,11 @@
         let mainStream = null;
         let subStream = null;
 
+        // 設定用変数（音量・明るさ・画面拡大率）
+        let speechVolume = 1.0;
+        let screenBrightness = 100;
+        let uiScale = 1.0;
+
         // ユーザー名の読み込み（LocalStorageから復元）
         let userName = localStorage.getItem('jarvis_user_name') || 'ボス';
 
@@ -357,6 +367,7 @@
             utterance.lang = 'ja-JP';
             utterance.pitch = 0.8;
             utterance.rate = 1.1;
+            utterance.volume = speechVolume; // 音量設定の適用
 
             // 喋り始めにボイスメーターを表示
             utterance.onstart = function() {
@@ -492,15 +503,15 @@
                 });
         }
 
-        // Wikipedia APIを使用して検索して解説する関数 ＆ 画面上タブに表示
+        // Google検索および解説関数（画面上タブにGoogle検索を表示）
         async function searchAndExplain(keyword) {
-            speak(`データベースにアクセスし、「${keyword}」について検索します。`);
+            speak(`データベースにアクセスし、「${keyword}」についてGoogleで検索します。`);
             
-            // 画面上にWikipediaのページを読み込んで表示
-            openTab(`https://ja.m.wikipedia.org/wiki/${encodeURIComponent(keyword)}`, `SEARCH: ${keyword}`);
+            // 画面上にGoogle検索ページを表示
+            openTab(`https://www.google.com/search?igu=1&q=${encodeURIComponent(keyword)}`, `GOOGLE: ${keyword}`);
 
             try {
-                // Wikipedia API を叩いて概要を取得
+                // Wikipedia API を叩いて概要の音声読み上げも並行処理
                 const url = `https://ja.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro&explaintext&redirects=1&titles=${encodeURIComponent(keyword)}&origin=*`;
                 const response = await fetch(url);
                 const data = await response.json();
@@ -508,15 +519,13 @@
                 const pages = data.query.pages;
                 const pageId = Object.keys(pages)[0];
                 
-                if (pageId === "-1") {
-                    speak(`申し訳ありません、「${keyword}」に関する情報は見つかりませんでした。`);
-                } else {
+                if (pageId !== "-1") {
                     const extract = pages[pageId].extract;
                     const shortText = extract.substring(0, 150) + (extract.length > 150 ? "..." : "");
                     speak(shortText);
                 }
             } catch (error) {
-                speak('検索中にエラーが発生しました。ネットワーク接続を確認してください。');
+                // Wikipedia等で要約が取得できなくてもGoogle検索自体はタブに表示
             }
         }
 
@@ -580,6 +589,65 @@
         function processCommand(cmd) {
             const command = cmd.toLowerCase();
 
+            // --- 0. 音量・明るさ・画面拡大縮小設定 ---
+            const volMatch = cmd.match(/(?:音量|ボリューム)(?:を|は)?\s*(\d+)(?:%|パーセント)?/);
+            if (volMatch) {
+                let val = parseInt(volMatch[1], 10);
+                speechVolume = Math.min(1.0, Math.max(0.0, val / 100));
+                speak(`音量を${val}パーセントに設定しました。`);
+                return;
+            } else if (/(?:音量|ボリューム).*(?:上|大|高|強|あげ)/.test(cmd)) {
+                speechVolume = Math.min(1.0, speechVolume + 0.2);
+                speak(`音量を上げました。現在${Math.round(speechVolume * 100)}パーセントです。`);
+                return;
+            } else if (/(?:音量|ボリューム).*(?:下|小|低|弱|さげ)/.test(cmd)) {
+                speechVolume = Math.max(0.0, speechVolume - 0.2);
+                speak(`音量を下げました。現在${Math.round(speechVolume * 100)}パーセントです。`);
+                return;
+            }
+
+            const brightMatch = cmd.match(/(?:明るさ|輝度|画面の明るさ)(?:を|は)?\s*(\d+)(?:%|パーセント)?/);
+            if (brightMatch) {
+                screenBrightness = parseInt(brightMatch[1], 10);
+                document.body.style.filter = `brightness(${screenBrightness}%)`;
+                speak(`画面の明るさを${screenBrightness}パーセントに設定しました。`);
+                return;
+            } else if (/(?:明るく|画面.*明るく)/.test(cmd)) {
+                screenBrightness = Math.min(200, screenBrightness + 25);
+                document.body.style.filter = `brightness(${screenBrightness}%)`;
+                speak(`画面を明るくしました。`);
+                return;
+            } else if (/(?:暗く|画面.*暗く)/.test(cmd)) {
+                screenBrightness = Math.max(20, screenBrightness - 25);
+                document.body.style.filter = `brightness(${screenBrightness}%)`;
+                speak(`画面を暗くしました。`);
+                return;
+            }
+
+            const scaleMatch = cmd.match(/(?:画面|表示|UI|文字).*(?:サイズ|倍率)?\s*(\d+)(?:%|パーセント)/);
+            if (scaleMatch) {
+                let val = parseInt(scaleMatch[1], 10);
+                uiScale = Math.min(2.0, Math.max(0.5, val / 100));
+                document.getElementById('hud-container').style.transform = `scale(${uiScale})`;
+                speak(`画面表示のサイズを${val}パーセントに設定しました。`);
+                return;
+            } else if (/(?:画面|表示|UI|文字).*(?:大|拡大|大きく)/.test(cmd) || /拡大/.test(cmd)) {
+                uiScale = Math.min(2.0, uiScale + 0.15);
+                document.getElementById('hud-container').style.transform = `scale(${uiScale})`;
+                speak(`画面表示を拡大しました。`);
+                return;
+            } else if (/(?:画面|表示|UI|文字).*(?:小|縮小|小さく)/.test(cmd) || /縮小/.test(cmd)) {
+                uiScale = Math.max(0.5, uiScale - 0.15);
+                document.getElementById('hud-container').style.transform = `scale(${uiScale})`;
+                speak(`画面表示を縮小しました。`);
+                return;
+            } else if (/(?:画面|表示|UI|サイズ).*(?:元に|標準|デフォルト|リセット)/.test(cmd)) {
+                uiScale = 1.0;
+                document.getElementById('hud-container').style.transform = `scale(${uiScale})`;
+                speak(`画面表示のサイズを標準に戻しました。`);
+                return;
+            }
+
             // --- 1. 名前の設定と記憶 ---
             const nameMatch = cmd.match(/(?:僕|私|オレ|わたし|ぼく)?の名前は\s*(.+?)(?:です|だよ|だ|ー)?$/) ||
                               cmd.match(/(.+?)って呼んで/) ||
@@ -607,14 +675,14 @@
                 return;
             }
 
-            // --- 3. Webサイト／タブ表示（埋め込みブロック対策済みURL） ---
-            if (/youtube|ユーチューブ/i.test(cmd)) {
+            // --- 3. Webサイト／タブ表示（Google検索対応） ---
+            if (/google|グーグル|検索画面|ブラウザ/i.test(cmd) && /開|表示|見せ/.test(cmd)) {
+                speak('画面上にGoogle検索を表示します。');
+                openTab('https://www.google.com/search?igu=1', 'Google');
+                return;
+            } else if (/youtube|ユーチューブ/i.test(cmd)) {
                 speak('画面上にYouTubeを表示します。');
                 openTab('https://www.youtube-nocookie.com/embed?listType=search&list=人気動画', 'YouTube');
-                return;
-            } else if (/google|グーグル|検索画面|ブラウザ/i.test(cmd) && /開|表示|見せ/.test(cmd)) {
-                speak('画面上に検索画面を表示します。');
-                openTab('https://html.duckduckgo.com/html/', 'Search Engine');
                 return;
             } else if (/twitter|ツイッター|\bx\b|エックス/i.test(cmd) && /開|表示|見せ/.test(cmd)) {
                 speak('画面上にX（Twitter）のトレンド表示を読み込みます。');
@@ -625,7 +693,7 @@
             // --- 4. タブ表示・非表示の柔軟判定 ---
             if (/(?:タブ|画面).*(?:表示|開|見せ|出し|つけ)/.test(cmd)) {
                 speak('画面上にタブを表示しました。操作が可能です。');
-                openTab(document.getElementById('tab-iframe').src || 'https://ja.m.wikipedia.org', 'DISPLAY TAB');
+                openTab(document.getElementById('tab-iframe').src || 'https://www.google.com/search?igu=1', 'DISPLAY TAB');
                 return;
             } else if (/(?:タブ|画面).*(?:消|閉|隠|非表示|いらない)/.test(cmd)) {
                 speak('タブを閉じました。');
@@ -653,7 +721,7 @@
                 return;
             }
 
-            // --- 6. 検索・Wikipedia調べる判定 ---
+            // --- 6. 検索・Google調べる判定 ---
             if (/(?:について)?(?:教えて|調べ|検索)|とは何|とは/i.test(cmd)) {
                 let keyword = cmd.replace(/について|教えて|調べ|検索|とは何|とは|を|て/g, '').trim();
                 if (keyword.endsWith('の')) keyword = keyword.slice(0, -1);
@@ -690,7 +758,7 @@
             } else if (/スキャン|分析|解析/.test(cmd)) {
                 speak('周囲の環境をスキャンしています... 脅威は検出されませんでした。');
                 document.getElementById('target-reticle').style.borderColor = '#0f0';
-                setTimeout(() => document.getElementById('target-reticle').style.borderColor = 'rgba(255,255,255,0.4)', 3000);
+                setTimeout(() => document.getElementById('target-reticle').style.borderColor = 'rgba(255,255,255,0.3)', 3000);
             } 
             
             // --- 8. シャットダウン・スリープ ---
