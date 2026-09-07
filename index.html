@@ -14,6 +14,19 @@
             overflow: hidden;
         }
 
+        /* 目を開くアニメーション用（まぶた） */
+        .eye-lid {
+            position: absolute;
+            left: 0;
+            width: 100vw;
+            height: 50vh; /* 初期状態は目を閉じている */
+            background-color: #000;
+            z-index: 50;
+            transition: height 2s cubic-bezier(0.65, 0, 0.35, 1);
+        }
+        #eye-top { top: 0; }
+        #eye-bottom { bottom: 0; }
+
         /* HUD（ヘッドアップディスプレイ）風の装飾 */
         #hud-container {
             position: absolute;
@@ -36,7 +49,57 @@
         }
 
         #status-box { top: 20px; left: 20px; width: 250px; }
-        #log-box { bottom: 20px; left: 20px; width: 400px; height: 150px; overflow-y: auto; }
+        #info-box { top: 20px; right: 20px; width: 250px; text-align: right; } /* 日付・天気用に追加 */
+        
+        /* 字幕の配置（画面中央下） */
+        #log-box { 
+            bottom: 30px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            width: 70%; 
+            text-align: center; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        #log-content {
+            font-size: 20px;
+            background: rgba(0, 20, 40, 0.8);
+            border: 1px solid #0ff;
+            padding: 15px 30px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 0 10px #0ff;
+        }
+
+        /* ボイスメーター */
+        #voice-meter {
+            display: none; /* 初期は非表示 */
+            gap: 8px;
+            height: 30px;
+            align-items: center;
+        }
+        .meter-bar {
+            width: 10px;
+            background-color: #0ff;
+            animation: bounce 0.4s infinite alternate;
+        }
+        .meter-bar:nth-child(1) { height: 15px; animation-delay: 0.0s; }
+        .meter-bar:nth-child(2) { height: 30px; animation-delay: 0.1s; }
+        .meter-bar:nth-child(3) { height: 20px; animation-delay: 0.2s; }
+        .meter-bar:nth-child(4) { height: 25px; animation-delay: 0.3s; }
+        .meter-bar:nth-child(5) { height: 10px; animation-delay: 0.4s; }
+
+        @keyframes bounce {
+            0% { transform: scaleY(0.3); }
+            100% { transform: scaleY(1.2); }
+        }
+
         #target-reticle {
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
@@ -58,33 +121,12 @@
             filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.7);
             z-index: 1;
         }
-
-        /* 起動ボタン（ブラウザの仕様上、ユーザーのアクションが必要） */
-        #start-btn {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 20px 40px;
-            font-size: 24px;
-            background: #000;
-            color: #0ff;
-            border: 2px solid #0ff;
-            cursor: pointer;
-            z-index: 20;
-            pointer-events: auto;
-            box-shadow: 0 0 15px #0ff;
-            transition: 0.3s;
-        }
-
-        #start-btn:hover {
-            background: #0ff;
-            color: #000;
-        }
     </style>
 </head>
 <body>
 
-    <button id="start-btn" onclick="startJarvis()">システム起動 (Boot J.A.R.V.I.S.)</button>
+    <div id="eye-top" class="eye-lid"></div>
+    <div id="eye-bottom" class="eye-lid"></div>
 
     <video id="camera-feed" autoplay playsinline></video>
 
@@ -94,57 +136,71 @@
             <p>CAMERA: <span id="cam-status">OFF</span></p>
             <p>MIC: <span id="mic-status">OFF</span></p>
         </div>
+
+        <div id="info-box" class="hud-element">
+            <h3 id="date-display">DATE: STANDBY</h3>
+            <p id="weather-display">WEATHER: STANDBY</p>
+        </div>
+
         <div id="target-reticle" class="hud-element"></div>
+        
         <div id="log-box" class="hud-element">
-            <strong>SYSTEM LOG:</strong><br>
-            <span id="log-content"></span>
+            <div id="log-content">マイクの許可後、「起動」または「ジャーヴィス」と呼びかけてください。</div>
+            <div id="voice-meter">
+                <div class="meter-bar"></div>
+                <div class="meter-bar"></div>
+                <div class="meter-bar"></div>
+                <div class="meter-bar"></div>
+                <div class="meter-bar"></div>
+            </div>
         </div>
     </div>
 
     <script>
-        // ログ出力関数
+        let isAwake = false;
+
+        // ページ読み込みと同時に音声認識を開始
+        window.onload = function() {
+            startListening();
+        };
+
+        // 字幕出力関数（上書きして字幕風に表示）
         function addLog(text, isJarvis = false) {
             const logContent = document.getElementById('log-content');
-            const prefix = isJarvis ? "<span style='color:#ff0'>[J.A.R.V.I.S.]</span> " : "[USER] ";
-            logContent.innerHTML += prefix + text + "<br>";
-            document.getElementById('log-box').scrollTop = document.getElementById('log-box').scrollHeight;
+            const prefix = isJarvis ? "<span style='color:#ff0'>[J.A.R.V.I.S.]</span> " : "<span style='color:#0f0'>[USER]</span> ";
+            logContent.innerHTML = prefix + text;
         }
 
-        // 音声合成（J.A.R.V.I.S.が喋る）
+        // 音声合成（J.A.R.V.I.S.が喋る ＆ ボイスメーター起動）
         function speak(text) {
             addLog(text, true);
             const synth = window.speechSynthesis;
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'ja-JP';
-            utterance.pitch = 0.8; // 少し低めの声
-            utterance.rate = 1.1;  // 少し早口
+            utterance.pitch = 0.8;
+            utterance.rate = 1.1;
+
+            // 喋り始めにボイスメーターを表示
+            utterance.onstart = function() {
+                document.getElementById('voice-meter').style.display = 'flex';
+            };
+            // 喋り終わりにボイスメーターを隠す
+            utterance.onend = function() {
+                document.getElementById('voice-meter').style.display = 'none';
+            };
+
             synth.speak(utterance);
         }
 
-        // コマンド処理
-        function processCommand(command) {
-            if (command.includes('こんにちは') || command.includes('おはよう')) {
-                speak('こんにちは、ボス。本日のシステムはすべて正常に稼働しています。');
-            } else if (command.includes('時間') || command.includes('何時')) {
-                const now = new Date();
-                speak(`現在の時刻は${now.getHours()}時${now.getMinutes()}分です。`);
-            } else if (command.includes('天気')) {
-                speak('申し訳ありません、外部ネットワークへの接続がまだ実装されていません。外を見て確認してください。');
-            } else if (command.includes('スキャン')) {
-                speak('周囲の環境をスキャンしています... 脅威は検出されませんでした。');
-                document.getElementById('target-reticle').style.borderColor = '#0f0';
-                setTimeout(() => document.getElementById('target-reticle').style.borderColor = '#0ff', 3000);
-            } else if (command.includes('終了') || command.includes('シャットダウン')) {
-                speak('システムをスリープ状態に移行します。おやすみなさいませ、ボス。');
-            } else {
-                speak('すみません、そのコマンドは認識できませんでした。');
-            }
-        }
-
-        // システム起動（カメラとマイクの許可を取得）
-        async function startJarvis() {
-            document.getElementById('start-btn').style.display = 'none';
-            speak('システムを起動中。カメラとマイクのアクセスを許可してください。');
+        // 起動シーケンス（目を開く ＆ カメラ起動 ＆ 天気取得）
+        async function wakeUp() {
+            isAwake = true;
+            
+            // 目を開くアニメーション
+            document.getElementById('eye-top').style.height = '0';
+            document.getElementById('eye-bottom').style.height = '0';
+            
+            speak('システムを起動しました。カメラとネットワークに接続します。');
 
             // カメラの起動
             try {
@@ -157,12 +213,39 @@
                 addLog('エラー: カメラにアクセスできません。', true);
             }
 
-            // 音声認識の起動 (Web Speech API)
+            // 日付と天気の取得
+            updateDateAndWeather();
+        }
+
+        // 日付と天気を取得する関数
+        function updateDateAndWeather() {
+            const now = new Date();
+            document.getElementById('date-display').innerText = now.toLocaleDateString('ja-JP');
+
+            // 外部API (Open-Meteo) から簡易的に天気を取得
+            fetch('https://api.open-meteo.com/v1/forecast?latitude=36.4&longitude=138.25&current_weather=true')
+                .then(response => response.json())
+                .then(data => {
+                    const weatherCode = data.current_weather.weathercode;
+                    const temp = data.current_weather.temperature;
+                    let weatherStr = "CLEAR";
+                    if (weatherCode >= 51 && weatherCode <= 69) weatherStr = "RAIN";
+                    else if (weatherCode >= 71) weatherStr = "SNOW";
+                    else if (weatherCode >= 4) weatherStr = "CLOUDY";
+                    
+                    document.getElementById('weather-display').innerText = `WEATHER: ${weatherStr} / TEMP: ${temp}°C`;
+                }).catch(err => {
+                    document.getElementById('weather-display').innerText = `WEATHER: OFFLINE`;
+                });
+        }
+
+        // 音声認識の待機
+        function startListening() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (SpeechRecognition) {
                 const recognition = new SpeechRecognition();
                 recognition.lang = 'ja-JP';
-                recognition.continuous = true; // 常に聞き取りを続ける
+                recognition.continuous = true;
                 recognition.interimResults = false;
 
                 recognition.onstart = function() {
@@ -173,23 +256,68 @@
                 recognition.onresult = function(event) {
                     const lastIndex = event.results.length - 1;
                     const transcript = event.results[lastIndex][0].transcript.trim();
-                    addLog(transcript);
-                    processCommand(transcript);
+                    
+                    if (!isAwake) {
+                        // スリープ中の起動コマンド判定
+                        if (transcript.includes('起動') || transcript.includes('ジャーヴィス') || transcript.includes('ジャビス') || transcript.toLowerCase().includes('jarvis') || transcript.toLowerCase().includes('javis')) {
+                            wakeUp();
+                        }
+                    } else {
+                        // 起動後のコマンド処理
+                        addLog(transcript);
+                        processCommand(transcript);
+                    }
                 };
 
                 recognition.onerror = function(event) {
-                    addLog('エラー: 音声認識が中断されました (' + event.error + ')', true);
+                    // エラー時もコンソールに出力しつつ再起動を試みる
+                    console.log('Voice Recognition Error:', event.error);
                 };
 
                 recognition.onend = function() {
-                    // 途切れても自動で再起動する
+                    // 音声認識が途切れても自動で再起動
                     recognition.start();
                 };
 
+                // マイクの許可を求めて開始
                 recognition.start();
-                speak('準備完了です、ボス。ご指示をどうぞ。');
             } else {
-                speak('お使いのブラウザは音声認識をサポートしていません。');
+                addLog('エラー: お使いのブラウザは音声認識をサポートしていません。', true);
+            }
+        }
+
+        // コマンド処理
+        function processCommand(command) {
+            if (command.includes('こんにちは') || command.includes('おはよう')) {
+                speak('こんにちは、ボス。本日のシステムはすべて正常に稼働しています。');
+            } else if (command.includes('時間') || command.includes('何時')) {
+                const now = new Date();
+                speak(`現在の時刻は${now.getHours()}時${now.getMinutes()}分です。`);
+            } else if (command.includes('天気')) {
+                speak('HUDの右上をご確認ください。ネットワークから取得した天気を表示しています。');
+            } else if (command.includes('スキャン')) {
+                speak('周囲の環境をスキャンしています... 脅威は検出されませんでした。');
+                document.getElementById('target-reticle').style.borderColor = '#0f0';
+                setTimeout(() => document.getElementById('target-reticle').style.borderColor = '#0ff', 3000);
+            } else if (command.includes('終了') || command.includes('シャットダウン')) {
+                speak('システムをスリープ状態に移行します。おやすみなさいませ、ボス。');
+                isAwake = false;
+                
+                // 目を閉じる
+                document.getElementById('eye-top').style.height = '50vh';
+                document.getElementById('eye-bottom').style.height = '50vh';
+                
+                // カメラ停止
+                const video = document.getElementById('camera-feed');
+                if(video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                    video.srcObject = null;
+                }
+                document.getElementById('cam-status').innerText = 'OFF';
+                document.getElementById('cam-status').style.color = '#0ff';
+                setTimeout(() => addLog("システムはスリープ状態です。「起動」または「ジャーヴィス」と話しかけてください。"), 1000);
+            } else {
+                speak('すみません、そのコマンドは認識できませんでした。');
             }
         }
     </script>
