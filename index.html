@@ -167,7 +167,7 @@
             width: 100vw;
             height: 100vh;
             object-fit: cover;
-            filter: contrast(1.2) brightness(0.8) opacity(0.7);
+            filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.7);
             z-index: 1;
         }
 
@@ -182,7 +182,7 @@
             box-shadow: 0 0 15px #0ff;
             border-radius: 8px;
             object-fit: cover;
-            filter: contrast(1.2) brightness(0.8) opacity(0.8);
+            filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.8);
             z-index: 35;
             display: none;
             pointer-events: none;
@@ -620,61 +620,7 @@
                 setTimeout(() => document.getElementById('target-reticle').style.borderColor = '#0ff', 3000);
             } 
             
-    
-        // AI応答：Gemini APIを使って、定型コマンド以外の質問にも自然に回答
-        async function askAI(question) {
-            const apiKey = localStorage.getItem('jarvis_gemini_api_key');
-            if (!apiKey) {
-                speak('AI機能を利用するには、まず「AIキーを設定」と話しかけてください。');
-                return;
-            }
-
-            addLog(question);
-            speak('承知しました。考えています。');
-
-            try {
-                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        system_instruction: {
-                            parts: [{
-                                text: `あなたはJ.A.R.V.I.S.風の日本語AIアシスタントです。ユーザーを「${userName}様」と呼んでも構いません。
-質問には自然で簡潔に、役に立つ日本語で答えてください。分からないことは分からないと明示してください。
-プログラムの既存機能を勝手に変更・実行したり、存在しない情報を作ったりしないでください。`
-                            }]
-                        },
-                        contents: [{ role: 'user', parts: [{ text: question }] }],
-                        generationConfig: {
-                            temperature: 0.7,
-                            maxOutputTokens: 700
-                        }
-                    })
-                });
-
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
-                const answer = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('').trim();
-
-                if (!answer) throw new Error('AIから回答を取得できませんでした。');
-                speak(answer);
-            } catch (error) {
-                console.error('AI response error:', error);
-                speak('申し訳ありません。AIへの接続に失敗しました。APIキーまたはネットワーク接続を確認してください。');
-            }
-        }
-
-        // APIキーは画面に表示せず、ブラウザのLocalStorageに保存
-        function setAIKey() {
-            const key = prompt('Gemini APIキーを入力してください。入力したキーはこのブラウザにのみ保存されます。');
-            if (key && key.trim()) {
-                localStorage.setItem('jarvis_gemini_api_key', key.trim());
-                speak('AIキーを保存しました。これで通常の質問にも回答できます。');
-            }
-        }
-
-        // --- 8. シャットダウン・スリープ ---
+            // --- 8. シャットダウン・スリープ ---
             else if (/終了|シャットダウン|スリープ|おやすみ|バイバイ/.test(cmd)) {
                 speak(`システムをスリープ状態に移行します。おやすみなさいませ、${userName}様。`);
                 isAwake = false;
@@ -689,11 +635,8 @@
                 document.getElementById('cam-status').innerText = 'OFF';
                 document.getElementById('cam-status').style.color = '#0ff';
                 setTimeout(() => addLog("システムはスリープ状態です。「起動」または「ジャーヴィス」と話しかけてください。"), 1000);
-            } else if (/AIキー.*(設定|登録)|APIキー.*(設定|登録)/i.test(cmd)) {
-                setAIKey();
             } else {
-                // 定型コマンドに該当しない質問はAIへ渡す
-                askAI(cmd);
+                speak(`申し訳ありません、${userName}様。その命令の意図を正確に理解できませんでした。`);
             }
         }
     </script>
