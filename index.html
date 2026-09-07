@@ -2,643 +2,277 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>J.A.R.V.I.S. System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Web viewer & Location</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #000;
-            color: #0ff;
-            font-family: 'Courier New', Courier, monospace;
-            overflow: hidden;
-        }
-
-        /* 目を開くアニメーション用（まぶた） */
-        .eye-lid {
-            position: absolute;
-            left: 0;
-            width: 100vw;
-            height: 50vh; /* 初期状態は目を閉じている */
-            background-color: #000;
-            z-index: 50;
-            transition: height 2s cubic-bezier(0.65, 0, 0.35, 1);
-        }
-        #eye-top { top: 0; }
-        #eye-bottom { bottom: 0; }
-
-        /* HUD（ヘッドアップディスプレイ）風の装飾 */
-        #hud-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            border: 5px solid rgba(0, 255, 255, 0.3);
+        * {
             box-sizing: border-box;
-            pointer-events: none;
-            z-index: 10;
         }
-
-        .hud-element {
-            position: absolute;
-            border: 1px solid #0ff;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
             padding: 10px;
-            background: rgba(0, 20, 40, 0.5);
-            box-shadow: 0 0 10px #0ff;
+            background-color: #f4f6f8;
+            -webkit-tap-highlight-color: transparent;
         }
-
-        #status-box { top: 20px; left: 20px; width: 250px; }
-        #info-box { top: 20px; right: 20px; width: 250px; text-align: right; } /* 日付・天気用 */
-
-        /* 画面上タブウィンドウ（操作可能） */
-        #tab-window {
-            position: absolute;
-            top: 70px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 75vw;
-            height: 55vh;
-            background: rgba(0, 15, 30, 0.95);
-            border: 2px solid #0ff;
-            box-shadow: 0 0 20px #0ff;
-            z-index: 40;
-            display: none;
-            pointer-events: auto; /* クリックやスクロールなどのマウス操作を有効化 */
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        #tab-header {
-            background: rgba(0, 255, 255, 0.2);
-            color: #0ff;
-            padding: 8px 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-weight: bold;
-            border-bottom: 1px solid #0ff;
-        }
-
-        #tab-close-btn {
-            background: transparent;
-            border: 1px solid #0ff;
-            color: #0ff;
-            cursor: pointer;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        #tab-close-btn:hover {
-            background: #0ff;
-            color: #000;
-        }
-
-        #tab-iframe {
-            width: 100%;
-            height: calc(100% - 35px);
-            border: none;
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
             background: #fff;
-        }
-        
-        /* 字幕の配置（画面中央下） */
-        #log-box { 
-            bottom: 30px; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            width: 70%; 
-            text-align: center; 
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            border: none;
-            background: transparent;
-            box-shadow: none;
-        }
-
-        #log-content {
-            font-size: 20px;
-            background: rgba(0, 20, 40, 0.8);
-            border: 1px solid #0ff;
-            padding: 15px 30px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            box-shadow: 0 0 10px #0ff;
-        }
-
-        /* ボイスメーター */
-        #voice-meter {
-            display: none; /* 初期は非表示 */
-            gap: 8px;
-            height: 30px;
-            align-items: center;
-        }
-        .meter-bar {
-            width: 10px;
-            background-color: #0ff;
-            animation: bounce 0.4s infinite alternate;
-        }
-        .meter-bar:nth-child(1) { height: 15px; animation-delay: 0.0s; }
-        .meter-bar:nth-child(2) { height: 30px; animation-delay: 0.1s; }
-        .meter-bar:nth-child(3) { height: 20px; animation-delay: 0.2s; }
-        .meter-bar:nth-child(4) { height: 25px; animation-delay: 0.3s; }
-        .meter-bar:nth-child(5) { height: 10px; animation-delay: 0.4s; }
-
-        @keyframes bounce {
-            0% { transform: scaleY(0.3); }
-            100% { transform: scaleY(1.2); }
-        }
-
-        #target-reticle {
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 300px; height: 300px;
-            border-radius: 50%;
-            border: 2px dashed #0ff;
-            animation: rotate 10s linear infinite;
-        }
-
-        @keyframes rotate {
-            100% { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-
-        /* カメラ映像（メイン） */
-        #camera-feed {
-            width: 100vw;
-            height: 100vh;
-            object-fit: cover;
-            filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.7);
-            z-index: 1;
-        }
-
-        /* 右下のインカメラ小窓（アウトカメラ起動時に使用） */
-        #sub-camera-feed {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            width: 180px;
-            height: 135px;
-            border: 2px solid #0ff;
-            box-shadow: 0 0 15px #0ff;
+            padding: 15px;
             border-radius: 8px;
-            object-fit: cover;
-            filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.8);
-            z-index: 35;
-            display: none;
-            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .input-group {
+            display: flex;
+            gap: 6px;
+            width: 100%;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            font-size: 16px; /* iOSの自動ズーム防止 */
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            outline: none;
+        }
+        button {
+            padding: 12px 14px;
+            font-size: 14px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            touch-action: manipulation;
+            flex: 1;
+            min-width: 110px;
+            text-align: center;
+        }
+        button:active {
+            opacity: 0.8;
+            transform: scale(0.98);
+        }
+        button.voice-btn {
+            background-color: #6c757d;
+            flex: 0 0 auto;
+            min-width: auto;
+            padding: 12px 16px;
+        }
+        button.voice-btn.recording {
+            background-color: #dc3545;
+            animation: pulse 1.5s infinite;
+        }
+        button.tab-btn {
+            background-color: #28a745;
+        }
+        button.loc-btn {
+            background-color: #17a2b8;
+        }
+        #location-display {
+            margin-bottom: 12px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #333;
+            word-break: break-all;
+        }
+        .iframe-container {
+            width: 100%;
+            height: 55vh;
+            min-height: 350px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            overflow: hidden;
+            background-color: #000;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        .note {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px;
+            }
+            button {
+                font-size: 13px;
+                padding: 10px 6px;
+            }
         }
     </style>
 </head>
 <body>
-
-    <!-- まぶた（起動アニメーション用） -->
-    <div id="eye-top" class="eye-lid"></div>
-    <div id="eye-bottom" class="eye-lid"></div>
-
-    <!-- カメラ映像 -->
-    <video id="camera-feed" autoplay playsinline muted></video>
-    <!-- 右下インカメラ小窓用映像 -->
-    <video id="sub-camera-feed" autoplay playsinline muted></video>
-
-    <!-- HUDレイヤー -->
-    <div id="hud-container">
-        <div id="status-box" class="hud-element">
-            <h3>J.A.R.V.I.S. ONLINE</h3>
-            <p>USER: <span id="user-display" style="color:#0f0;">ボス</span></p>
-            <p>CAMERA: <span id="cam-status">OFF</span></p>
-            <p>MIC: <span id="mic-status">OFF</span></p>
-        </div>
-
-        <!-- 日付・天気表示ボックス -->
-        <div id="info-box" class="hud-element">
-            <h3 id="date-display">DATE: STANDBY</h3>
-            <p id="weather-display">WEATHER: STANDBY</p>
-        </div>
-
-        <!-- 画面上表示タブウィンドウ -->
-        <div id="tab-window">
-            <div id="tab-header">
-                <span id="tab-title">J.A.R.V.I.S. DISPLAY TAB</span>
-                <button id="tab-close-btn" onclick="closeTab()">✕ 閉じる</button>
+    <div class="container">
+        <div class="controls">
+            <div class="input-group">
+                <input type="text" id="url-input" placeholder="URLまたはキーワードを入力" value="https://www.youtube.com/watch?v=dQw4w9WgXcQ">
+                <button class="voice-btn" id="voice-btn" onclick="toggleVoiceInput()" title="音声入力">🎤</button>
             </div>
-            <iframe id="tab-iframe" src="about:blank" allow="autoplay; encrypted-media"></iframe>
+            <button onclick="loadUrl()">表示</button>
+            <button class="tab-btn" onclick="openNewTab()">別のタブで開く</button>
+            <button class="loc-btn" onclick="getLocation()">現在位置を確認</button>
         </div>
 
-        <div id="target-reticle" class="hud-element"></div>
-        
-        <!-- 字幕・ボイスメーター -->
-        <div id="log-box" class="hud-element">
-            <div id="log-content">マイクの許可後、「起動」または「ジャーヴィス」と呼びかけてください。</div>
-            <div id="voice-meter">
-                <div class="meter-bar"></div>
-                <div class="meter-bar"></div>
-                <div class="meter-bar"></div>
-                <div class="meter-bar"></div>
-                <div class="meter-bar"></div>
-            </div>
+        <div id="location-display">現在位置: 未取得</div>
+
+        <div class="iframe-container">
+            <iframe id="web-frame" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
         </div>
+        <p class="note">※ YouTube動画は自動で埋め込み用URLに変換して表示します。Google検索画面などのセキュリティ制限があるサイトは「別のタブで開く」で閲覧してください。</p>
     </div>
 
     <script>
-        let isAwake = false;
-        let currentWeatherJa = "不明"; // 天気読み上げ用
-        let currentTemp = "不明"; // 気温読み上げ用
-        let currentFacingMode = 'user'; // 'user' (インカメラ) または 'environment' (アウトカメラ)
-        let mainStream = null;
-        let subStream = null;
+        let recognition = null;
+        let isRecognizing = false;
 
-        // ユーザー名の読み込み（LocalStorageから復元）
-        let userName = localStorage.getItem('jarvis_user_name') || 'ボス';
-
-        // ページ読み込みと同時に音声認識を開始
-        window.onload = function() {
-            updateUserDisplay();
-            startListening();
-        };
-
-        function updateUserDisplay() {
-            document.getElementById('user-display').innerText = userName;
-        }
-
-        // ユーザー名を保存する関数
-        function saveUserName(newName) {
-            if (!newName) return;
-            userName = newName;
-            localStorage.setItem('jarvis_user_name', newName);
-            updateUserDisplay();
-            speak(`承知いたしました。これからは${userName}様とお呼びいたします。`);
-        }
-
-        // 字幕出力関数（上書きして字幕風に表示）
-        function addLog(text, isJarvis = false) {
-            const logContent = document.getElementById('log-content');
-            const prefix = isJarvis ? "<span style='color:#ff0'>[J.A.R.V.I.S.]</span> " : "<span style='color:#0f0'>[USER]</span> ";
-            logContent.innerHTML = prefix + text;
-        }
-
-        // 音声合成（J.A.R.V.I.S.が喋る ＆ ボイスメーター起動）
-        function speak(text) {
-            addLog(text, true);
-            const synth = window.speechSynthesis;
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'ja-JP';
-            utterance.pitch = 0.8;
-            utterance.rate = 1.1;
-
-            // 喋り始めにボイスメーターを表示
-            utterance.onstart = function() {
-                document.getElementById('voice-meter').style.display = 'flex';
-            };
-            // 喋り終わりにボイスメーターを隠す
-            utterance.onend = function() {
-                document.getElementById('voice-meter').style.display = 'none';
-            };
-
-            synth.speak(utterance);
-        }
-
-        // 画面上タブの表示と読み込み
-        function openTab(url, title = "DISPLAY TAB") {
-            const tabWindow = document.getElementById('tab-window');
-            const tabIframe = document.getElementById('tab-iframe');
-            const tabTitle = document.getElementById('tab-title');
-            
-            if (url) {
-                tabIframe.src = url;
-            }
-            tabTitle.innerText = title;
-            tabWindow.style.display = 'block';
-        }
-
-        // 画面上タブを閉じる
-        function closeTab() {
-            document.getElementById('tab-window').style.display = 'none';
-            document.getElementById('tab-iframe').src = 'about:blank';
-        }
-
-        // 全カメラストリームを停止
-        function stopAllCameras() {
-            if (mainStream) {
-                mainStream.getTracks().forEach(track => track.stop());
-                mainStream = null;
-            }
-            if (subStream) {
-                subStream.getTracks().forEach(track => track.stop());
-                subStream = null;
-            }
-            document.getElementById('sub-camera-feed').style.display = 'none';
-        }
-
-        // カメラ設定・切り替え関数
-        async function setupCamera(facingMode = 'user') {
-            stopAllCameras();
-            currentFacingMode = facingMode;
-
-            const video = document.getElementById('camera-feed');
-            const subVideo = document.getElementById('sub-camera-feed');
-
-            try {
-                if (facingMode === 'environment') {
-                    // アウトカメラをメイン画面に設定
-                    try {
-                        mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } } });
-                    } catch (e) {
-                        mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                    }
-                    video.srcObject = mainStream;
-
-                    // 右下にインカメラ（自分）を小さく表示
-                    try {
-                        subStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-                        subVideo.srcObject = subStream;
-                        subVideo.style.display = 'block';
-                    } catch (e) {
-                        console.log("サブカメラ(インカメラ)の起動に失敗しました", e);
-                    }
-                } else {
-                    // インカメラをメイン画面に設定
-                    mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-                    video.srcObject = mainStream;
-                    subVideo.style.display = 'none';
-                }
-
-                document.getElementById('cam-status').innerText = facingMode === 'environment' ? 'ONLINE (OUT)' : 'ONLINE (IN)';
-                document.getElementById('cam-status').style.color = '#0f0';
-            } catch (err) {
-                addLog('エラー: カメラにアクセスできません。', true);
-                document.getElementById('cam-status').innerText = 'ERROR';
-                document.getElementById('cam-status').style.color = '#f00';
-            }
-        }
-
-        // 起動シーケンス（目を開く ＆ カメラ起動 ＆ 天気取得）
-        async function wakeUp() {
-            isAwake = true;
-            
-            // 目を開くアニメーション
-            document.getElementById('eye-top').style.height = '0';
-            document.getElementById('eye-bottom').style.height = '0';
-            
-            speak(`システムを起動しました。お帰りなさいませ、${userName}様。`);
-
-            // カメラの起動（初期値: インカメラ）
-            await setupCamera('user');
-
-            // 日付と天気の取得
-            updateDateAndWeather();
-        }
-
-        // 日付と天気を取得する関数
-        function updateDateAndWeather() {
-            const now = new Date();
-            document.getElementById('date-display').innerText = now.toLocaleDateString('ja-JP');
-
-            // 外部API (Open-Meteo) から簡易的に天気を取得
-            fetch('https://api.open-meteo.com/v1/forecast?latitude=36.4&longitude=138.25&current_weather=true')
-                .then(response => response.json())
-                .then(data => {
-                    const weatherCode = data.current_weather.weathercode;
-                    currentTemp = data.current_weather.temperature;
-                    let weatherStr = "CLEAR";
-                    currentWeatherJa = "晴れ";
-
-                    if (weatherCode >= 51 && weatherCode <= 69) {
-                        weatherStr = "RAIN";
-                        currentWeatherJa = "雨";
-                    } else if (weatherCode >= 71) {
-                        weatherStr = "SNOW";
-                        currentWeatherJa = "雪";
-                    } else if (weatherCode >= 4 && weatherCode <= 50) {
-                         weatherStr = "CLOUDY";
-                         currentWeatherJa = "曇り";
-                    }
-                    
-                    document.getElementById('weather-display').innerText = `WEATHER: ${weatherStr} / TEMP: ${currentTemp}°C`;
-                }).catch(err => {
-                    document.getElementById('weather-display').innerText = `WEATHER: OFFLINE`;
-                });
-        }
-
-        // Wikipedia APIを使用して検索して解説する関数 ＆ 画面上タブに表示
-        async function searchAndExplain(keyword) {
-            speak(`データベースにアクセスし、「${keyword}」について検索します。`);
-            
-            // 画面上にWikipediaのページを読み込んで表示
-            openTab(`https://ja.m.wikipedia.org/wiki/${encodeURIComponent(keyword)}`, `SEARCH: ${keyword}`);
-
-            try {
-                // Wikipedia API を叩いて概要を取得
-                const url = `https://ja.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro&explaintext&redirects=1&titles=${encodeURIComponent(keyword)}&origin=*`;
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                const pages = data.query.pages;
-                const pageId = Object.keys(pages)[0];
-                
-                if (pageId === "-1") {
-                    speak(`申し訳ありません、「${keyword}」に関する情報は見つかりませんでした。`);
-                } else {
-                    const extract = pages[pageId].extract;
-                    const shortText = extract.substring(0, 150) + (extract.length > 150 ? "..." : "");
-                    speak(shortText);
-                }
-            } catch (error) {
-                speak('検索中にエラーが発生しました。ネットワーク接続を確認してください。');
-            }
-        }
-
-        // 音楽再生関数（YouTube Embedプレイヤーをタブ内に生成）
-        function playMusic(query) {
-            speak(`${userName}様、${query}の音楽を再生します。`);
-            // iframeで埋め込み表示が許可されているYouTube Embed Searchを利用
-            const embedUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(query + ' 音楽 BGM')}`;
-            openTab(embedUrl, `MUSIC: ${query}`);
-        }
-
-        // 音声認識の待機
-        function startListening() {
+        // 音声認識の初期設定（スマホでのピコン音連続発生を防止）
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                const recognition = new SpeechRecognition();
-                recognition.lang = 'ja-JP';
-                recognition.continuous = true;
-                recognition.interimResults = false;
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.interimResults = false;
+            recognition.continuous = false; // 連続認識をOFFにして連続通知音を回避
 
-                recognition.onstart = function() {
-                    document.getElementById('mic-status').innerText = 'LISTENING...';
-                    document.getElementById('mic-status').style.color = '#0f0';
-                };
+            recognition.onstart = function() {
+                isRecognizing = true;
+                const btn = document.getElementById('voice-btn');
+                btn.classList.add('recording');
+                btn.textContent = '⏹️';
+            };
 
-                recognition.onresult = function(event) {
-                    const lastIndex = event.results.length - 1;
-                    const transcript = event.results[lastIndex][0].transcript.trim();
-                    
-                    if (!transcript || transcript.length < 2) {
-                        return;
-                    }
+            recognition.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                document.getElementById('url-input').value = transcript;
+                loadUrl();
+            };
 
-                    if (!isAwake) {
-                        // スリープ中の起動コマンド判定（柔軟に対応）
-                        if (/起動|ジャーヴィス|ジャビス|jarvis|javis|起きて|ヘイ/i.test(transcript)) {
-                            wakeUp();
-                        }
-                    } else {
-                        // 起動後のコマンド処理
-                        addLog(transcript);
-                        processCommand(transcript);
-                    }
-                };
+            recognition.onerror = function(event) {
+                stopVoiceInput();
+            };
 
-                recognition.onerror = function(event) {
-                    console.log('Voice Recognition Error:', event.error);
-                };
+            recognition.onend = function() {
+                // 自動ループを行わず終了させることで音の連続鳴動を防止
+                stopVoiceInput();
+            };
+        }
 
-                recognition.onend = function() {
+        function toggleVoiceInput() {
+            if (!recognition) {
+                alert('お使いのブラウザ・端末は音声入力に対応していません。');
+                return;
+            }
+            if (isRecognizing) {
+                recognition.stop();
+            } else {
+                try {
                     recognition.start();
-                };
-
-                recognition.start();
-            } else {
-                addLog('エラー: お使いのブラウザは音声認識をサポートしていません。', true);
+                } catch(e) {
+                    stopVoiceInput();
+                }
             }
         }
 
-        // AI風・柔軟な自然言語処理コマンド判定
-        function processCommand(cmd) {
-            const command = cmd.toLowerCase();
+        function stopVoiceInput() {
+            isRecognizing = false;
+            const btn = document.getElementById('voice-btn');
+            btn.classList.remove('recording');
+            btn.textContent = '🎤';
+        }
 
-            // --- 1. 名前の設定と記憶 ---
-            const nameMatch = cmd.match(/(?:僕|私|オレ|わたし|ぼく)?の名前は\s*(.+?)(?:です|だよ|だ|ー)?$/) ||
-                              cmd.match(/(.+?)って呼んで/) ||
-                              cmd.match(/名前を\s*(.+?)(?:に|と)(?:覚えて|変更|設定)/);
-            if (nameMatch && nameMatch[1] && !cmd.includes('何') && !cmd.includes('覚えてる')) {
-                const extractedName = nameMatch[1].replace(/です|だよ|と|に|とお呼び/g, '').trim();
-                saveUserName(extractedName);
-                return;
+        // 入力されたURLの整形・YouTube再生用URL変換
+        function formatUrl(input) {
+            let url = input.trim();
+            if (!url) return '';
+
+            // YouTube URLの検出および embed 形式への自動変換
+            const ytMatch = url.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+            if (ytMatch && ytMatch[1]) {
+                return `https://www.youtube.com/embed/${ytMatch[1]}`;
             }
 
-            if (/僕の名前|私の名前|名前(を|は)?(覚えてる|知ってる|何|なんだっけ)/.test(cmd)) {
-                speak(`はい、存じております。${userName}様ですね。`);
-                return;
-            }
-
-            // --- 2. 音楽の再生（柔軟な意図読み取り） ---
-            const musicMatch = cmd.match(/(.+?)の?(?:音楽|曲|bgm|ミュージック|ソング)(?:を|でも)?(?:流して|かけて|再生|聴きたい|流す)/) ||
-                               cmd.match(/(.+?)を(?:流して|かけて|再生して)/);
-            if (musicMatch && musicMatch[1] && !cmd.includes('カメラ') && !cmd.includes('タブ')) {
-                const musicKeyword = musicMatch[1].replace(/何か|なんかに|適当に|いい感じの/g, '').trim();
-                playMusic(musicKeyword || '作業用BGM');
-                return;
-            } else if (/音楽.*(流して|かけて|再生)|曲.*(流して|かけて)/.test(cmd)) {
-                playMusic('リラックス BGM');
-                return;
-            }
-
-            // --- 3. Webサイト／タブ表示（埋め込みブロック対策済みURL） ---
-            if (/youtube|ユーチューブ/i.test(cmd)) {
-                speak('画面上にYouTubeを表示します。');
-                openTab('https://www.youtube-nocookie.com/embed?listType=search&list=人気動画', 'YouTube');
-                return;
-            } else if (/google|グーグル|検索画面|ブラウザ/i.test(cmd) && /開|表示|見せ/.test(cmd)) {
-                speak('画面上に検索画面を表示します。');
-                openTab('https://html.duckduckgo.com/html/', 'Search Engine');
-                return;
-            } else if (/twitter|ツイッター|\bx\b|エックス/i.test(cmd) && /開|表示|見せ/.test(cmd)) {
-                speak('画面上にX（Twitter）のトレンド表示を読み込みます。');
-                openTab('https://twitframe.com/', 'X / Twitter');
-                return;
-            }
-
-            // --- 4. タブ表示・非表示の柔軟判定 ---
-            if (/(?:タブ|画面).*(?:表示|開|見せ|出し|つけ)/.test(cmd)) {
-                speak('画面上にタブを表示しました。操作が可能です。');
-                openTab(document.getElementById('tab-iframe').src || 'https://ja.m.wikipedia.org', 'DISPLAY TAB');
-                return;
-            } else if (/(?:タブ|画面).*(?:消|閉|隠|非表示|いらない)/.test(cmd)) {
-                speak('タブを閉じました。');
-                closeTab();
-                return;
-            }
-
-            // --- 5. カメラ切り替え判定 ---
-            if (/アウトカメラ|背面|外.*カメラ/.test(cmd)) {
-                speak('アウトカメラに切り替えます。右下にインカメラを表示します。');
-                setupCamera('environment');
-                return;
-            } else if (/インカメラ|前面|内.*カメラ|元.*カメラ/.test(cmd)) {
-                speak('インカメラに切り替えます。');
-                setupCamera('user');
-                return;
-            } else if (/カメラ.*(?:切|変|チェンジ)/.test(cmd)) {
-                if (currentFacingMode === 'user') {
-                    speak('アウトカメラに切り替えます。');
-                    setupCamera('environment');
-                } else {
-                    speak('インカメラに切り替えます。');
-                    setupCamera('user');
+            // http/https の補完および検索対応
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                if (!url.includes('.')) {
+                    return `https://www.google.com/search?q=${encodeURIComponent(url)}`;
                 }
-                return;
+                url = 'https://' + url;
             }
 
-            // --- 6. 検索・Wikipedia調べる判定 ---
-            if (/(?:について)?(?:教えて|調べ|検索)|とは何|とは/i.test(cmd)) {
-                let keyword = cmd.replace(/について|教えて|調べ|検索|とは何|とは|を|て/g, '').trim();
-                if (keyword.endsWith('の')) keyword = keyword.slice(0, -1);
-                
-                if (keyword) {
-                    searchAndExplain(keyword);
-                } else {
-                    speak('検索したいキーワードを聞き取れませんでした。もう一度おっしゃってください。');
-                }
-                return;
-            }
+            return url;
+        }
 
-            // --- 7. 会話・応答 ---
-            if (/こんにちは|おはよう|こんばんは|やあ/.test(cmd)) {
-                speak(`こんにちは、${userName}様。本日もシステムはすべて順調です。`);
-            } else if (/ありがとう|サンキュー|感謝/.test(cmd)) {
-                speak(`どういたしまして、${userName}様。お役に立てて光栄です。`);
-            } else if (/調子|元気|ステータス/.test(cmd)) {
-                speak('システムのパフォーマンスは100%、すべて正常です。');
-            } else if (/誰が作|制作者|開発者/.test(cmd)) {
-                speak(`私は優秀な開発者である${userName}様によってプログラムされました。`);
-            } else if (/今日.*日|日付|カレンダー/.test(cmd)) {
-                const now = new Date();
-                speak(`本日は${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日です。`);
-            } else if (/時間|何時/.test(cmd)) {
-                const now = new Date();
-                speak(`現在の時刻は${now.getHours()}時${now.getMinutes()}分です。`);
-            } else if (/天気|気温/.test(cmd)) {
-                if (currentWeatherJa !== "不明") {
-                    speak(`現在の天気は${currentWeatherJa}、気温は${currentTemp}度です。`);
-                } else {
-                    speak('申し訳ありません。現在天気の情報を取得できておりません。');
-                }
-            } else if (/スキャン|分析|解析/.test(cmd)) {
-                speak('周囲の環境をスキャンしています... 脅威は検出されませんでした。');
-                document.getElementById('target-reticle').style.borderColor = '#0f0';
-                setTimeout(() => document.getElementById('target-reticle').style.borderColor = '#0ff', 3000);
-            } 
-            
-            // --- 8. シャットダウン・スリープ ---
-            else if (/終了|シャットダウン|スリープ|おやすみ|バイバイ/.test(cmd)) {
-                speak(`システムをスリープ状態に移行します。おやすみなさいませ、${userName}様。`);
-                isAwake = false;
-                closeTab();
-                
-                // 目を閉じる
-                document.getElementById('eye-top').style.height = '50vh';
-                document.getElementById('eye-bottom').style.height = '50vh';
-                
-                // カメラ停止
-                stopAllCameras();
-                document.getElementById('cam-status').innerText = 'OFF';
-                document.getElementById('cam-status').style.color = '#0ff';
-                setTimeout(() => addLog("システムはスリープ状態です。「起動」または「ジャーヴィス」と話しかけてください。"), 1000);
-            } else {
-                speak(`申し訳ありません、${userName}様。その命令の意図を正確に理解できませんでした。`);
+        // 枠内（iframe）に読み込む
+        function loadUrl() {
+            const input = document.getElementById('url-input').value;
+            const targetUrl = formatUrl(input);
+            if (targetUrl) {
+                document.getElementById('web-frame').src = targetUrl;
             }
         }
+
+        // 別のタブで開く
+        function openNewTab() {
+            const input = document.getElementById('url-input').value;
+            let targetUrl = input.trim();
+
+            if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+                if (!targetUrl.includes('.')) {
+                    targetUrl = `https://www.google.com/search?q=${encodeURIComponent(targetUrl)}`;
+                } else {
+                    targetUrl = 'https://' + targetUrl;
+                }
+            }
+
+            if (targetUrl) {
+                window.open(targetUrl, '_blank');
+            }
+        }
+
+        // 現在位置の確認（Geolocation API）
+        function getLocation() {
+            const display = document.getElementById('location-display');
+            if (navigator.geolocation) {
+                display.textContent = '現在位置を取得中...';
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        display.textContent = `現在位置: 緯度 ${lat.toFixed(5)} / 経度 ${lng.toFixed(5)}`;
+                    },
+                    (error) => {
+                        display.textContent = `位置情報の取得に失敗しました (${error.message})`;
+                    },
+                    { enableHighAccuracy: true, timeout: 10000 }
+                );
+            } else {
+                display.textContent = 'お使いのブラウザは位置情報に対応していません。';
+            }
+        }
+
+        // 初開時に初期URLをロード
+        window.onload = function() {
+            loadUrl();
+        };
     </script>
 </body>
 </html>
