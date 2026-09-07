@@ -329,9 +329,11 @@
         let screenBrightness = 100;
         let uiScale = 1.0;
 
-        // 音声認識の自己フィードバック防止用フラグ
+        // 音声認識オブジェクト管理と自己応答防止フラグ
+        let recognition = null;
+        let isRecognizing = false;
         let isJarvisSpeaking = false;
-        let speechIgnoreTimer = null;
+        let speechSafetyTimer = null;
 
         // モード管理フラグ（温度カメラ・戦闘モード）
         let isThermalMode = false;
@@ -383,14 +385,20 @@
             logContent.innerHTML = prefix + text;
         }
 
-        // 音声合成（J.A.R.V.I.S.が喋る ＆ 自己応答ブロック制御）
+        // 音声合成（J.A.R.V.I.S.が喋る ＆ 安全タイマー付き自己応答ブロック）
         function speak(text) {
             addLog(text, true);
             const synth = window.speechSynthesis;
-            
-            // 発声中は自己認識を完全遮断
+            synth.cancel(); // 割り込み対応
+
             isJarvisSpeaking = true;
-            if (speechIgnoreTimer) clearTimeout(speechIgnoreTimer);
+            if (speechSafetyTimer) clearTimeout(speechSafetyTimer);
+
+            // 万が一onendが発生しなかった場合のためのセーフティ復帰タイマー（最大8秒）
+            speechSafetyTimer = setTimeout(() => {
+                isJarvisSpeaking = false;
+                document.getElementById('voice-meter').style.display = 'none';
+            }, 8000);
 
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'ja-JP';
@@ -398,26 +406,53 @@
             utterance.rate = 1.1;
             utterance.volume = speechVolume; // 音量設定の適用
 
-            // 喋り始めにボイスメーターを表示
             utterance.onstart = function() {
                 isJarvisSpeaking = true;
                 document.getElementById('voice-meter').style.display = 'flex';
             };
 
-            // 喋り終わり処理（余韻のマイク拾いを防ぐため500msのディレイを設置）
             utterance.onend = function() {
                 document.getElementById('voice-meter').style.display = 'none';
-                speechIgnoreTimer = setTimeout(() => {
+                setTimeout(() => {
                     isJarvisSpeaking = false;
-                }, 500);
+                    if (speechSafetyTimer) clearTimeout(speechSafetyTimer);
+                }, 400);
             };
 
             utterance.onerror = function() {
                 document.getElementById('voice-meter').style.display = 'none';
                 isJarvisSpeaking = false;
+                if (speechSafetyTimer) clearTimeout(speechSafetyTimer);
             };
 
             synth.speak(utterance);
+        }
+
+        // 明るさの変更（画面・デバイス設定）
+        async function setDeviceBrightness(val) {
+            screenBrightness = Math.min(200, Math.max(10, val));
+            document.body.style.filter = `brightness(${screenBrightness}%)`;
+
+            // デバイスの画面輝度APIが存在する場合は呼び出し
+            if ('screen' in navigator && 'setBrightness' in navigator.screen) {
+                try {
+                    await navigator.screen.setBrightness(screenBrightness / 100);
+                } catch (e) {
+                    console.log("Device Brightness API error:", e);
+                }
+            }
+        }
+
+        // 音量の変更（音声・デバイス音量）
+        function setDeviceVolume(valPercent) {
+            let val = Math.min(100, Math.max(0, valPercent));
+            speechVolume = val / 100;
+
+            // ページ内のメディア（カメラ音源やYouTube等）にも音量を反映
+            const mediaElements = document.querySelectorAll('audio, video');
+            mediaElements.forEach(media => {
+                media.volume = speechVolume;
+            });
         }
 
         // 全画面表示の切り替え
@@ -429,7 +464,7 @@
                     document.documentElement.webkitRequestFullscreen();
                 }
                 speak('全画面表示に切り替えました。');
-            } else if (enable === false || (enable === undefined && document.fullscreenElement)) {
+            } else if (enable === false || (enable === undefined && (document.fullscreenElement || document.webkitFullscreenElement))) {
                 if (document.exitFullscreen) {
                     document.exitFullscreen();
                 } else if (document.webkitExitFullscreen) {
@@ -440,20 +475,20 @@
         }
 
         // 温度カメラ（サーマル）モード切り替え
-        function setThermalMode(enable) {
+        function setThermalMode(enable, silent = false) {
             isThermalMode = enable;
             const camera = document.getElementById('camera-feed');
             if (isThermalMode) {
                 camera.classList.add('thermal-mode');
-                speak('サーマルカメラモードを起動しました。');
+                if (!silent) speak('サーマルカメラモードを起動しました。');
             } else {
                 camera.classList.remove('thermal-mode');
-                speak('サーマルカメラモードを解除しました。');
+                if (!silent) speak('サーマルカメラモードを解除しました。');
             }
         }
 
         // 戦闘モード切り替え
-        function setCombatMode(enable) {
+        function setCombatMode(enable, silent = false) {
             isCombatMode = enable;
             const reticle = document.getElementById('target-reticle');
             const modeStatus = document.getElementById('mode-status');
@@ -464,15 +499,75 @@
                 reticle.style.animationDuration = '2s';
                 modeStatus.innerText = 'COMBAT';
                 modeStatus.style.color = '#f00';
-                speak('戦闘モード移行。ターゲットロックON、全システム兵装スタンバイ。');
+                if (!silent) speak('戦闘モード移行。ターゲットロックON、全システム兵装スタンバイ。');
             } else {
                 document.documentElement.style.setProperty('--hud-theme-color', '#ffffff');
                 document.documentElement.style.setProperty('--hud-border-color', 'rgba(255, 255, 255, 0.25)');
                 reticle.style.animationDuration = '10s';
                 modeStatus.innerText = 'NORMAL';
                 modeStatus.style.color = '#0f0';
-                speak('戦闘モード解除。通常システムに復帰します。');
+                if (!silent) speak('戦闘モード解除。通常システムに復帰します。');
             }
+        }
+
+        // 通常モードへの一括復帰（戦闘モード・温度カメラ・フルスクリーンの共通解除）
+        function resetToNormalMode() {
+            setThermalMode(false, true);
+            setCombatMode(false, true);
+            if (document.fullscreenElement || document.webkitFullscreenElement) {
+                if (document.exitFullscreen) document.exitFullscreen();
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            }
+            speak('すべての特殊モードおよびフルスクリーンを解除し、通常モードに戻しました。');
+        }
+
+        // Googleレンズ（Googleカメラ）による画像解析（「これは何」機能）
+        function analyzeWithGoogleLens() {
+            speak('カメラ映像の対象をキャプチャし、Googleレンズで解析します。');
+
+            const video = document.getElementById('camera-feed');
+            if (!video || !video.videoWidth) {
+                speak('カメラ映像のキャプチャに失敗しました。');
+                return;
+            }
+
+            // キャンバスで現在のカメラ映像を静止画キャプチャ
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+
+                // Google画像検索/Googleレンズへのフォーム送信用データ構築
+                try {
+                    const file = new File([blob], "capture.jpg", { type: "image/jpeg" });
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = 'https://www.google.com/searchbyimage/upload';
+                    form.target = '_blank';
+                    form.enctype = 'multipart/form-data';
+                    form.style.display = 'none';
+
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.name = 'encoded_image';
+
+                    const container = new DataTransfer();
+                    container.items.add(file);
+                    input.files = container.files;
+
+                    form.appendChild(input);
+                    document.body.appendChild(form);
+                    form.submit();
+                    document.body.removeChild(form);
+                } catch (e) {
+                    // ブラウザ制限時のフォールバック（Googleレンズを開く）
+                    openTab('https://lens.google.com/', 'Google Lens');
+                }
+            }, 'image/jpeg');
         }
 
         // 画面上タブの表示と読み込み
@@ -631,54 +726,69 @@
             openTab(embedUrl, `MUSIC: ${query}`);
         }
 
-        // 音声認識の待機
+        // 音声認識の起動と強固な自動再接続制御
         function startListening() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                const recognition = new SpeechRecognition();
-                recognition.lang = 'ja-JP';
-                recognition.continuous = true;
-                recognition.interimResults = false;
-
-                recognition.onstart = function() {
-                    document.getElementById('mic-status').innerText = 'LISTENING...';
-                    document.getElementById('mic-status').style.color = '#0f0';
-                };
-
-                recognition.onresult = function(event) {
-                    // J.A.R.V.I.S.自身が発声している間は音声を無視（自己認識フィードバックループ防止）
-                    if (isJarvisSpeaking) return;
-
-                    const lastIndex = event.results.length - 1;
-                    const transcript = event.results[lastIndex][0].transcript.trim();
-                    
-                    if (!transcript || transcript.length < 2) {
-                        return;
-                    }
-
-                    if (!isAwake) {
-                        // スリープ中の起動コマンド判定（柔軟に対応）
-                        if (/起動|ジャーヴィス|ジャビス|jarvis|javis|起きて|ヘイ/i.test(transcript)) {
-                            wakeUp();
-                        }
-                    } else {
-                        // 起動後のコマンド処理
-                        addLog(transcript);
-                        processCommand(transcript);
-                    }
-                };
-
-                recognition.onerror = function(event) {
-                    console.log('Voice Recognition Error:', event.error);
-                };
-
-                recognition.onend = function() {
-                    recognition.start();
-                };
-
-                recognition.start();
-            } else {
+            if (!SpeechRecognition) {
                 addLog('エラー: お使いのブラウザは音声認識をサポートしていません。', true);
+                return;
+            }
+
+            if (recognition) {
+                try { recognition.stop(); } catch(e){}
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.continuous = true;
+            recognition.interimResults = false;
+
+            recognition.onstart = function() {
+                isRecognizing = true;
+                document.getElementById('mic-status').innerText = 'LISTENING...';
+                document.getElementById('mic-status').style.color = '#0f0';
+            };
+
+            recognition.onresult = function(event) {
+                // J.A.R.V.I.S.発声中は入力をスキップ（ループ防止）
+                if (isJarvisSpeaking) return;
+
+                const lastIndex = event.results.length - 1;
+                const transcript = event.results[lastIndex][0].transcript.trim();
+                
+                if (!transcript || transcript.length < 1) return;
+
+                if (!isAwake) {
+                    if (/起動|ジャーヴィス|ジャビス|jarvis|javis|起きて|ヘイ/i.test(transcript)) {
+                        wakeUp();
+                    }
+                } else {
+                    addLog(transcript);
+                    processCommand(transcript);
+                }
+            };
+
+            recognition.onerror = function(event) {
+                console.log('Voice Recognition Error:', event.error);
+                isRecognizing = false;
+                setTimeout(restartListening, 1000);
+            };
+
+            recognition.onend = function() {
+                isRecognizing = false;
+                setTimeout(restartListening, 400);
+            };
+
+            try {
+                recognition.start();
+            } catch(e) {
+                console.log('Recognition start exception:', e);
+            }
+        }
+
+        function restartListening() {
+            if (!isRecognizing && recognition) {
+                try { recognition.start(); } catch(e){}
             }
         }
 
@@ -686,17 +796,29 @@
         function processCommand(cmd) {
             const command = cmd.toLowerCase();
 
-            // --- 0. 全画面表示 / 温度カメラ / 戦闘モード判定 ---
+            // --- 0. Googleレンズ（これ何）判定 ---
+            if (/これ(は|が)?何|なにこれ|これ調べて|グーグルレンズ|googleレンズ/i.test(cmd)) {
+                analyzeWithGoogleLens();
+                return;
+            }
+
+            // --- 1. 通常モード一括復帰判定 ---
+            if (/通常モード|通常画面|元に戻して|全解除|リセット/i.test(cmd)) {
+                resetToNormalMode();
+                return;
+            }
+
+            // --- 2. 全画面表示 / 温度カメラ / 戦闘モード個別に操作 ---
             if (/全画面|フルスクリーン|画面拡大|画面を全画面/.test(cmd)) {
                 toggleFullscreen(true);
                 return;
-            } else if (/全画面解除|フルスクリーン解除|画面を元に戻す/.test(cmd) && document.fullscreenElement) {
+            } else if (/全画面解除|フルスクリーン解除/.test(cmd)) {
                 toggleFullscreen(false);
                 return;
             }
 
             if (/温度カメラ|サーモグラフィ|サーマル/i.test(cmd)) {
-                if (/解除|オフ|OFF|通常/i.test(cmd)) {
+                if (/解除|オフ|OFF/i.test(cmd)) {
                     setThermalMode(false);
                 } else {
                     setThermalMode(true);
@@ -707,42 +829,40 @@
             if (/戦闘モード|バトルモード|攻撃モード/i.test(cmd)) {
                 setCombatMode(true);
                 return;
-            } else if (/通常モード|戦闘モード解除|バトルモード解除|通常画面/i.test(cmd)) {
+            } else if (/戦闘モード解除|バトルモード解除/i.test(cmd)) {
                 setCombatMode(false);
                 return;
             }
 
-            // --- 1. 音量・明るさ・画面拡大縮小設定 ---
+            // --- 3. 音量・明るさ・画面拡大縮小設定 ---
             const volMatch = cmd.match(/(?:音量|ボリューム)(?:を|は)?\s*(\d+)(?:%|パーセント)?/);
             if (volMatch) {
                 let val = parseInt(volMatch[1], 10);
-                speechVolume = Math.min(1.0, Math.max(0.0, val / 100));
+                setDeviceVolume(val);
                 speak(`音量を${val}パーセントに設定しました。`);
                 return;
             } else if (/(?:音量|ボリューム).*(?:上|大|高|強|あげ)/.test(cmd)) {
-                speechVolume = Math.min(1.0, speechVolume + 0.2);
+                setDeviceVolume((speechVolume * 100) + 20);
                 speak(`音量を上げました。現在${Math.round(speechVolume * 100)}パーセントです。`);
                 return;
             } else if (/(?:音量|ボリューム).*(?:下|小|低|弱|さげ)/.test(cmd)) {
-                speechVolume = Math.max(0.0, speechVolume - 0.2);
+                setDeviceVolume((speechVolume * 100) - 20);
                 speak(`音量を下げました。現在${Math.round(speechVolume * 100)}パーセントです。`);
                 return;
             }
 
             const brightMatch = cmd.match(/(?:明るさ|輝度|画面の明るさ)(?:を|は)?\s*(\d+)(?:%|パーセント)?/);
             if (brightMatch) {
-                screenBrightness = parseInt(brightMatch[1], 10);
-                document.body.style.filter = `brightness(${screenBrightness}%)`;
-                speak(`画面の明るさを${screenBrightness}パーセントに設定しました。`);
+                let val = parseInt(brightMatch[1], 10);
+                setDeviceBrightness(val);
+                speak(`画面の明るさを${val}パーセントに設定しました。`);
                 return;
             } else if (/(?:明るく|画面.*明るく)/.test(cmd)) {
-                screenBrightness = Math.min(200, screenBrightness + 25);
-                document.body.style.filter = `brightness(${screenBrightness}%)`;
+                setDeviceBrightness(screenBrightness + 25);
                 speak(`画面を明るくしました。`);
                 return;
             } else if (/(?:暗く|画面.*暗く)/.test(cmd)) {
-                screenBrightness = Math.max(20, screenBrightness - 25);
-                document.body.style.filter = `brightness(${screenBrightness}%)`;
+                setDeviceBrightness(screenBrightness - 25);
                 speak(`画面を暗くしました。`);
                 return;
             }
@@ -764,14 +884,9 @@
                 document.getElementById('hud-container').style.transform = `scale(${uiScale})`;
                 speak(`画面表示を縮小しました。`);
                 return;
-            } else if (/(?:画面|表示|UI|サイズ).*(?:元に|標準|デフォルト|リセット)/.test(cmd)) {
-                uiScale = 1.0;
-                document.getElementById('hud-container').style.transform = `scale(${uiScale})`;
-                speak(`画面表示のサイズを標準に戻しました。`);
-                return;
             }
 
-            // --- 2. 名前の設定と記憶 ---
+            // --- 4. 名前の設定と記憶 ---
             const nameMatch = cmd.match(/(?:僕|私|オレ|わたし|ぼく)?の名前は\s*(.+?)(?:です|だよ|だ|ー)?$/) ||
                               cmd.match(/(.+?)って呼んで/) ||
                               cmd.match(/名前を\s*(.+?)(?:に|と)(?:覚えて|変更|設定)/);
@@ -786,7 +901,7 @@
                 return;
             }
 
-            // --- 3. 音楽の再生（柔軟な意図読み取り） ---
+            // --- 5. 音楽の再生 ---
             const musicMatch = cmd.match(/(.+?)の?(?:音楽|曲|bgm|ミュージック|ソング)(?:を|でも)?(?:流して|かけて|再生|聴きたい|流す)/) ||
                                cmd.match(/(.+?)を(?:流して|かけて|再生して)/);
             if (musicMatch && musicMatch[1] && !cmd.includes('カメラ') && !cmd.includes('タブ')) {
@@ -798,7 +913,7 @@
                 return;
             }
 
-            // --- 4. Webサイト／タブ表示（Google検索対応） ---
+            // --- 6. Webサイト／タブ表示（Google検索対応） ---
             if (/google|グーグル|検索画面|ブラウザ/i.test(cmd) && /開|表示|見せ/.test(cmd)) {
                 speak('画面上にGoogle検索を表示します。');
                 openTab('https://www.google.com/search?igu=1', 'Google');
@@ -813,7 +928,7 @@
                 return;
             }
 
-            // --- 5. タブ表示・非表示の柔軟判定 ---
+            // --- 7. タブ表示・非表示の柔軟判定 ---
             if (/(?:タブ|画面).*(?:表示|開|見せ|出し|つけ)/.test(cmd) && !/全画面/.test(cmd)) {
                 speak('画面上にタブを表示しました。操作が可能です。');
                 openTab(document.getElementById('tab-iframe').src || 'https://www.google.com/search?igu=1', 'DISPLAY TAB');
@@ -824,7 +939,7 @@
                 return;
             }
 
-            // --- 6. カメラ切り替え判定 ---
+            // --- 8. カメラ切り替え判定 ---
             if (/アウトカメラ|背面|外.*カメラ/.test(cmd)) {
                 speak('アウトカメラに切り替えます。右下にインカメラを表示します。');
                 setupCamera('environment');
@@ -844,7 +959,7 @@
                 return;
             }
 
-            // --- 7. 検索・Google調べる判定 ---
+            // --- 9. 検索・Google調べる判定 ---
             if (/(?:について)?(?:教えて|調べ|検索)|とは何|とは/i.test(cmd)) {
                 let keyword = cmd.replace(/について|教えて|調べ|検索|とは何|とは|を|て/g, '').trim();
                 if (keyword.endsWith('の')) keyword = keyword.slice(0, -1);
@@ -857,7 +972,7 @@
                 return;
             }
 
-            // --- 8. 会話・応答 ---
+            // --- 10. 会話・応答 ---
             if (/こんにちは|おはよう|こんばんは|やあ/.test(cmd)) {
                 speak(`こんにちは、${userName}様。本日もシステムはすべて順調です。`);
             } else if (/ありがとう|サンキュー|感謝/.test(cmd)) {
@@ -884,13 +999,12 @@
                 setTimeout(() => document.getElementById('target-reticle').style.borderColor = 'var(--hud-border-color)', 3000);
             } 
             
-            // --- 9. シャットダウン・スリープ ---
+            // --- 11. シャットダウン・スリープ ---
             else if (/終了|シャットダウン|スリープ|おやすみ|バイバイ/.test(cmd)) {
                 speak(`システムをスリープ状態に移行します。おやすみなさいませ、${userName}様。`);
                 isAwake = false;
                 closeTab();
-                setThermalMode(false);
-                setCombatMode(false);
+                resetToNormalMode();
                 
                 // 目を閉じる
                 document.getElementById('eye-top').style.height = '50vh';
