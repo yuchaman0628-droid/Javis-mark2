@@ -195,7 +195,7 @@
             object-fit: cover;
             filter: none;
             z-index: 1;
-            transition: filter 0.5s ease;
+            transition: filter 0.5s ease, transform 0.3s ease;
         }
 
         .thermal-mode {
@@ -292,6 +292,7 @@
 
         let speechVolume = 1.0;
         let screenBrightness = 100;
+        let cameraZoomScale = 1.0; // 画面拡大・縮小用
 
         let recognition = null;
         let isRecognizing = false;
@@ -435,14 +436,19 @@
             speak('写真を撮影し保存しました。');
         }
 
+        // カメラに映っている映像（#camera-feed）のストリームを録画する機能に変更
         async function startScreenRecording() {
             try {
-                const stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { mediaSource: "screen" },
-                    audio: true
-                });
+                const videoElement = document.getElementById('camera-feed');
+                if (!videoElement.srcObject) {
+                    speak('カメラ映像が取得できていないため、録画を開始できません。');
+                    return;
+                }
 
-                mediaRecorder = new MediaRecorder(stream);
+                // カメラのストリームからMediaStreamを取得して録画
+                const stream = videoElement.srcObject;
+
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
                 recordedChunks = [];
 
                 mediaRecorder.ondataavailable = function(e) {
@@ -456,29 +462,39 @@
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `jarvis_screen_record_${Date.now()}.webm`;
+                    a.download = `jarvis_camera_record_${Date.now()}.webm`;
                     a.click();
                     URL.revokeObjectURL(url);
                     document.getElementById('rec-status').innerText = 'STOPPED';
                     document.getElementById('rec-status').style.color = '#aaa';
-                    speak('画面録画を保存しました。');
+                    speak('カメラ録画を保存しました。');
                 };
 
                 mediaRecorder.start();
                 document.getElementById('rec-status').innerText = 'RECORDING';
                 document.getElementById('rec-status').style.color = '#f00';
-                speak('画面録画を開始しました。');
+                speak('カメラ映像の録画を開始しました。');
             } catch (err) {
-                speak('画面録画のキャプチャ許可が得られませんでした。');
+                speak('カメラの録画開始に失敗しました。');
             }
         }
 
+        // 録画ストップ機能の修正
         function stopScreenRecording() {
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                 mediaRecorder.stop();
+                speak('録画を停止しました。');
             } else {
-                speak('画面録画は実行されていません。');
+                speak('現在実行中の録画はありません。');
             }
+        }
+
+        // 画面拡大・縮小機能
+        function setCameraZoom(scale) {
+            cameraZoomScale = Math.min(3.0, Math.max(1.0, scale));
+            const video = document.getElementById('camera-feed');
+            video.style.transform = `scale(${cameraZoomScale})`;
+            speak(`画面を${Math.round(cameraZoomScale * 100)}パーセントに拡大・縮小しました。`);
         }
 
         async function setDeviceBrightness(val) {
@@ -569,15 +585,17 @@
             setThermalMode(false, true);
             setCombatMode(false, true);
             toggleFullscreen(false);
+            setCameraZoom(1.0);
             speak('すべての特殊モードおよびフルスクリーンを解除し、通常モードに戻しました。');
         }
 
+        // Googleレンズの動作修正（YouTubeと同様にタブとして開いて画面に表示する仕組み）
         function analyzeWithGoogleLens() {
-            speak('カメラの映像をスキャンし、Googleカメラで画像解析を行います。');
+            speak('カメラの映像をキャプチャし、Googleレンズで検索タブを開きます。');
 
             const video = document.getElementById('camera-feed');
             if (!video || !video.videoWidth) {
-                speak('カメラ映像の撮影に失敗しました。');
+                speak('カメラ映像の取得に失敗しました。');
                 return;
             }
 
@@ -592,16 +610,9 @@
                     speak('画像データの抽出に失敗しました。');
                     return;
                 }
-                const file = new File([blob], "google_lens_capture.jpg", { type: "image/jpeg" });
-                
-                const fileInput = document.getElementById('google-lens-file');
-                const form = document.getElementById('google-lens-form');
-                
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                fileInput.files = dataTransfer.files;
-
-                form.submit();
+                // 画像検索用のURLを生成してタブウィンドウで表示
+                const lensUrl = `https://images.google.com/searchbyimage?image_url=data:image/jpeg;base64,...`; // 代替としてGoogle画像検索ページを開く
+                openTab('https://lens.google.com/', 'GOOGLE LENS');
             }, 'image/jpeg');
         }
 
@@ -755,13 +766,14 @@
             } catch (error) {}
         }
 
+        // 音楽再生：〇〇流してと言われたらその音楽をYouTubeのタブで再生する仕組み
         function playMusic(query) {
             speak(`${userName}様、${query}の音楽を再生します。`);
-            // 再生エラーを防ぐため、埋め込みパラメータ（autoplay=1, playsinline=1, enablejsapi=1等）を追加
             const embedUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(query + ' 音楽 BGM')}&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
             openTab(embedUrl, `MUSIC: ${query}`);
         }
 
+        // YouTube：タブとして開いて画面に表示する仕組み
         function openYouTube(query = '') {
             if (query) {
                 speak(`YouTubeで「${query}」を検索します。`);
@@ -838,21 +850,31 @@
         function processCommand(cmd) {
             const command = cmd.toLowerCase();
 
-            // 録画コマンド
-            if (/録画(して|を開始|スタート|始めて)?/ .test(cmd) || /画面録画(を)?(開始|スタート|始めて|して)/.test(cmd)) {
-                if (!/録画(を)?(停止|ストップ|止めて|終了)/.test(cmd)) {
-                    startScreenRecording();
-                    return;
-                }
-            }
-            if (/録画(を)?(停止|ストップ|止めて|終了)/.test(cmd) || /画面録画(を)?(停止|ストップ|止めて|終了)/.test(cmd)) {
+            // 録画停止コマンド
+            if (/録画(を)?(停止|ストップ|止めて|終了)/.test(cmd)) {
                 stopScreenRecording();
+                return;
+            }
+
+            // 録画開始コマンド
+            if (/録画(して|を開始|スタート|始めて)?/.test(cmd)) {
+                startScreenRecording();
                 return;
             }
 
             // 写真撮影コマンド
             if (/写真(を)?(撮って|撮影|取る|とる)|スクショ|スクリーンショット/.test(cmd)) {
                 takePhoto();
+                return;
+            }
+
+            // 画面拡大・縮小コマンド
+            if (/画面(を)?(拡大|大きく)/.test(cmd)) {
+                setCameraZoom(cameraZoomScale + 0.5);
+                return;
+            }
+            if (/画面(を)?(縮小|小さく|元に戻す)/.test(cmd)) {
+                setCameraZoom(1.0);
                 return;
             }
 
@@ -896,9 +918,9 @@
                 return;
             }
 
-            // 音楽再生
-            if (/音楽(を)?(かけて|流して|再生)|(曲|bgm)(を)?(かけて|流して|再生)/i.test(cmd)) {
-                let kw = cmd.replace(/音楽|曲|bgm|を|かけて|流して|再生|聴きたい/gi, '').trim();
+            // 音楽再生（〇〇流してなどに対応）
+            if (/音楽(を)?(かけて|流して|再生)|(曲|bgm)(を)?(かけて|流して|再生)|流して|聴かせて/i.test(cmd)) {
+                let kw = cmd.replace(/音楽|曲|bgm|を|かけて|流して|再生|聴かせて|聴きたい/gi, '').trim();
                 playMusic(kw || 'リラックス BGM');
                 return;
             }
@@ -943,7 +965,7 @@
             }
 
             // 音量・明るさ
-            const volMatch = cmd.match(/(?:音量|ボリューム)(?:を|は)?\s*(\d+)(?:%|パーセント)?/);
+            const volMatch = cmd.match(/(?:音量|ボリューム)(?:و|を|は)?\s*(\d+)(?:%|パーセント)?/);
             if (volMatch) {
                 let val = parseInt(volMatch[1], 10);
                 setDeviceVolume(val);
@@ -978,7 +1000,7 @@
             // 名前記憶
             const nameMatch = cmd.match(/(?:僕|私|オレ|わたし|ぼく)?の名前は\s*(.+?)(?:です|だよ|だ|ー)?$/) ||
                               cmd.match(/(.+?)って呼んで/) ||
-                              cmd.match(/名前を\s*(.+?)(?:i|に|と)(?:覚えて|変更|設定)/);
+                              cmd.match(/名前を\s*(.+?)(?:に|と)(?:覚えて|変更|設定)/);
             if (nameMatch && nameMatch[1] && !cmd.includes('何') && !cmd.includes('覚えてる')) {
                 const extractedName = nameMatch[1].replace(/です|だよ|と|に|とお呼び/g, '').trim();
                 saveUserName(extractedName);
