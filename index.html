@@ -125,11 +125,14 @@
 </head>
 <body>
 
+    <!-- まぶた（起動アニメーション用） -->
     <div id="eye-top" class="eye-lid"></div>
     <div id="eye-bottom" class="eye-lid"></div>
 
+    <!-- カメラ映像 -->
     <video id="camera-feed" autoplay playsinline></video>
 
+    <!-- HUDレイヤー -->
     <div id="hud-container">
         <div id="status-box" class="hud-element">
             <h3>J.A.R.V.I.S. ONLINE</h3>
@@ -137,6 +140,7 @@
             <p>MIC: <span id="mic-status">OFF</span></p>
         </div>
 
+        <!-- 日付・天気表示ボックス -->
         <div id="info-box" class="hud-element">
             <h3 id="date-display">DATE: STANDBY</h3>
             <p id="weather-display">WEATHER: STANDBY</p>
@@ -144,6 +148,7 @@
 
         <div id="target-reticle" class="hud-element"></div>
         
+        <!-- 字幕・ボイスメーター -->
         <div id="log-box" class="hud-element">
             <div id="log-content">マイクの許可後、「起動」または「ジャーヴィス」と呼びかけてください。</div>
             <div id="voice-meter">
@@ -239,6 +244,31 @@
                 });
         }
 
+        // Wikipedia APIを使用して検索して解説する関数
+        async function searchAndExplain(keyword) {
+            speak(`データベースにアクセスし、「${keyword}」について検索します。`);
+            try {
+                // Wikipedia API を叩く
+                const url = `https://ja.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro&explaintext&redirects=1&titles=${encodeURIComponent(keyword)}&origin=*`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                const pages = data.query.pages;
+                const pageId = Object.keys(pages)[0];
+                
+                if (pageId === "-1") {
+                    speak(`申し訳ありません、「${keyword}」に関する情報は見つかりませんでした。`);
+                } else {
+                    const extract = pages[pageId].extract;
+                    // 長すぎる場合は最初の100文字程度にカットして読み上げる
+                    const shortText = extract.substring(0, 150) + (extract.length > 150 ? "..." : "");
+                    speak(shortText);
+                }
+            } catch (error) {
+                speak('検索中にエラーが発生しました。ネットワーク接続を確認してください。');
+            }
+        }
+
         // 音声認識の待機
         function startListening() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -288,8 +318,42 @@
 
         // コマンド処理
         function processCommand(command) {
-            if (command.includes('こんにちは') || command.includes('おはよう')) {
+            // --- サイト・アプリを開く機能 ---
+            if (command.includes('YouTube') && (command.includes('開いて') || command.includes('見せて'))) {
+                speak('承知しました。YouTubeを開きます。');
+                window.open('https://www.youtube.com', '_blank');
+            } else if ((command.includes('Google') || command.includes('グーグル')) && command.includes('開いて')) {
+                speak('承知しました。Google検索を開きます。');
+                window.open('https://www.google.com', '_blank');
+            } else if ((command.includes('Twitter') || command.includes('X') || command.includes('エックス')) && command.includes('開いて')) {
+                speak('承知しました。Xを開きます。');
+                window.open('https://twitter.com', '_blank');
+            } 
+            
+            // --- 検索して解説する機能 ---
+            else if (command.includes('について教えて') || command.includes('とは何') || command.includes('を検索して')) {
+                // 検索キーワードを抽出（「〇〇について教えて」の「〇〇」を取り出す）
+                let keyword = command.replace('について教えて', '').replace('について', '').replace('とは何', '').replace('とは', '').replace('を検索して', '').replace('検索して', '').trim();
+                
+                // 余計な助詞が残っている場合の処理（簡易的）
+                if (keyword.endsWith('の')) keyword = keyword.slice(0, -1);
+                
+                if (keyword) {
+                    searchAndExplain(keyword);
+                } else {
+                    speak('検索したいキーワードを聞き取れませんでした。もう一度お願いします。');
+                }
+            }
+
+            // --- 会話・質問に答える機能 ---
+            else if (command.includes('こんにちは') || command.includes('おはよう')) {
                 speak('こんにちは、ボス。本日のシステムはすべて正常に稼働しています。');
+            } else if (command.includes('ありがとう') || command.includes('サンキュー')) {
+                speak('どういたしまして。お役に立てて光栄です。');
+            } else if (command.includes('調子はどう') || command.includes('元気')) {
+                speak('システムのパフォーマンスは100%、すべて順調です。');
+            } else if (command.includes('誰が作った')) {
+                speak('私は優秀な開発者であるあなたによってプログラムされました。');
             } else if (command.includes('時間') || command.includes('何時')) {
                 const now = new Date();
                 speak(`現在の時刻は${now.getHours()}時${now.getMinutes()}分です。`);
@@ -299,7 +363,10 @@
                 speak('周囲の環境をスキャンしています... 脅威は検出されませんでした。');
                 document.getElementById('target-reticle').style.borderColor = '#0f0';
                 setTimeout(() => document.getElementById('target-reticle').style.borderColor = '#0ff', 3000);
-            } else if (command.includes('終了') || command.includes('シャットダウン')) {
+            } 
+            
+            // --- シャットダウン ---
+            else if (command.includes('終了') || command.includes('シャットダウン') || command.includes('スリープ')) {
                 speak('システムをスリープ状態に移行します。おやすみなさいませ、ボス。');
                 isAwake = false;
                 
@@ -317,7 +384,7 @@
                 document.getElementById('cam-status').style.color = '#0ff';
                 setTimeout(() => addLog("システムはスリープ状態です。「起動」または「ジャーヴィス」と話しかけてください。"), 1000);
             } else {
-                speak('すみません、そのコマンドは認識できませんでした。');
+                speak('すみません、そのコマンドに対する回答がデータベースにありません。');
             }
         }
     </script>
