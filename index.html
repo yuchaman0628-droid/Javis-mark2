@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>J.A.R.V.I.S. System</title>
     <style>
+        :root {
+            --hud-theme-color: #ffffff;
+            --hud-border-color: rgba(255, 255, 255, 0.25);
+            --hud-bg-color: transparent;
+        }
+
         body {
             margin: 0;
             padding: 0;
@@ -39,21 +45,23 @@
             width: 100vw;
             height: 100vh;
             height: 100dvh;
-            border: 2px solid rgba(255, 255, 255, 0.15);
+            border: 2px solid var(--hud-border-color);
             box-sizing: border-box;
             pointer-events: none;
             z-index: 10;
             transform-origin: center center;
-            transition: transform 0.3s ease;
+            transition: transform 0.3s ease, border-color 0.3s ease;
         }
 
         .hud-element {
             position: absolute;
-            border: 1px solid rgba(255, 255, 255, 0.25);
+            border: 1px solid var(--hud-border-color);
             padding: 10px;
-            background: transparent;
+            background: var(--hud-bg-color);
             border-radius: 6px;
             box-sizing: border-box;
+            color: var(--hud-theme-color);
+            transition: border-color 0.3s ease, color 0.3s ease;
         }
 
         #status-box { top: 20px; left: 20px; width: 250px; }
@@ -68,7 +76,7 @@
             width: 75vw;
             height: 55vh;
             background: rgba(10, 10, 10, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid var(--hud-border-color);
             z-index: 40;
             display: none;
             pointer-events: auto; /* クリックやスクロールなどのマウス操作を有効化 */
@@ -85,7 +93,7 @@
             justify-content: space-between;
             align-items: center;
             font-weight: bold;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            border-bottom: 1px solid var(--hud-border-color);
         }
 
         #tab-close-btn {
@@ -126,7 +134,7 @@
         #log-content {
             font-size: 20px;
             background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid var(--hud-border-color);
             padding: 15px 30px;
             border-radius: 10px;
             margin-bottom: 15px;
@@ -143,7 +151,7 @@
         }
         .meter-bar {
             width: 10px;
-            background-color: #fff;
+            background-color: var(--hud-theme-color);
             animation: bounce 0.4s infinite alternate;
         }
         .meter-bar:nth-child(1) { height: 15px; animation-delay: 0.0s; }
@@ -162,8 +170,9 @@
             transform: translate(-50%, -50%);
             width: 300px; height: 300px;
             border-radius: 50%;
-            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border: 2px dashed var(--hud-border-color);
             animation: rotate 10s linear infinite;
+            transition: border-color 0.3s ease;
         }
 
         @keyframes rotate {
@@ -178,6 +187,12 @@
             object-fit: cover;
             filter: none;
             z-index: 1;
+            transition: filter 0.5s ease;
+        }
+
+        /* 温度カメラ（サーマル）用フィルタクラス */
+        .thermal-mode {
+            filter: hue-rotate(180deg) saturate(5) contrast(2.5) invert(0.1) !important;
         }
 
         /* 右下のインカメラ小窓（アウトカメラ起動時に使用） */
@@ -187,7 +202,7 @@
             right: 20px;
             width: 180px;
             height: 135px;
-            border: 2px solid #fff;
+            border: 2px solid var(--hud-theme-color);
             border-radius: 8px;
             object-fit: cover;
             filter: none;
@@ -268,6 +283,7 @@
             <p>USER: <span id="user-display" style="color:#0f0;">ボス</span></p>
             <p>CAMERA: <span id="cam-status">OFF</span></p>
             <p>MIC: <span id="mic-status">OFF</span></p>
+            <p>MODE: <span id="mode-status" style="color:#0f0;">NORMAL</span></p>
         </div>
 
         <!-- 日付・天気表示ボックス -->
@@ -312,6 +328,14 @@
         let speechVolume = 1.0;
         let screenBrightness = 100;
         let uiScale = 1.0;
+
+        // 音声認識の自己フィードバック防止用フラグ
+        let isJarvisSpeaking = false;
+        let speechIgnoreTimer = null;
+
+        // モード管理フラグ（温度カメラ・戦闘モード）
+        let isThermalMode = false;
+        let isCombatMode = false;
 
         // ユーザー名の読み込み（LocalStorageから復元）
         let userName = localStorage.getItem('jarvis_user_name') || 'ボス';
@@ -359,10 +383,15 @@
             logContent.innerHTML = prefix + text;
         }
 
-        // 音声合成（J.A.R.V.I.S.が喋る ＆ ボイスメーター起動）
+        // 音声合成（J.A.R.V.I.S.が喋る ＆ 自己応答ブロック制御）
         function speak(text) {
             addLog(text, true);
             const synth = window.speechSynthesis;
+            
+            // 発声中は自己認識を完全遮断
+            isJarvisSpeaking = true;
+            if (speechIgnoreTimer) clearTimeout(speechIgnoreTimer);
+
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'ja-JP';
             utterance.pitch = 0.8;
@@ -371,14 +400,79 @@
 
             // 喋り始めにボイスメーターを表示
             utterance.onstart = function() {
+                isJarvisSpeaking = true;
                 document.getElementById('voice-meter').style.display = 'flex';
             };
-            // 喋り終わりにボイスメーターを隠す
+
+            // 喋り終わり処理（余韻のマイク拾いを防ぐため500msのディレイを設置）
             utterance.onend = function() {
                 document.getElementById('voice-meter').style.display = 'none';
+                speechIgnoreTimer = setTimeout(() => {
+                    isJarvisSpeaking = false;
+                }, 500);
+            };
+
+            utterance.onerror = function() {
+                document.getElementById('voice-meter').style.display = 'none';
+                isJarvisSpeaking = false;
             };
 
             synth.speak(utterance);
+        }
+
+        // 全画面表示の切り替え
+        function toggleFullscreen(enable) {
+            if (enable === true || (enable === undefined && !document.fullscreenElement)) {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                } else if (document.documentElement.webkitRequestFullscreen) {
+                    document.documentElement.webkitRequestFullscreen();
+                }
+                speak('全画面表示に切り替えました。');
+            } else if (enable === false || (enable === undefined && document.fullscreenElement)) {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
+                speak('全画面表示を解除しました。');
+            }
+        }
+
+        // 温度カメラ（サーマル）モード切り替え
+        function setThermalMode(enable) {
+            isThermalMode = enable;
+            const camera = document.getElementById('camera-feed');
+            if (isThermalMode) {
+                camera.classList.add('thermal-mode');
+                speak('サーマルカメラモードを起動しました。');
+            } else {
+                camera.classList.remove('thermal-mode');
+                speak('サーマルカメラモードを解除しました。');
+            }
+        }
+
+        // 戦闘モード切り替え
+        function setCombatMode(enable) {
+            isCombatMode = enable;
+            const reticle = document.getElementById('target-reticle');
+            const modeStatus = document.getElementById('mode-status');
+
+            if (isCombatMode) {
+                document.documentElement.style.setProperty('--hud-theme-color', '#ff3333');
+                document.documentElement.style.setProperty('--hud-border-color', 'rgba(255, 51, 51, 0.6)');
+                reticle.style.animationDuration = '2s';
+                modeStatus.innerText = 'COMBAT';
+                modeStatus.style.color = '#f00';
+                speak('戦闘モード移行。ターゲットロックON、全システム兵装スタンバイ。');
+            } else {
+                document.documentElement.style.setProperty('--hud-theme-color', '#ffffff');
+                document.documentElement.style.setProperty('--hud-border-color', 'rgba(255, 255, 255, 0.25)');
+                reticle.style.animationDuration = '10s';
+                modeStatus.innerText = 'NORMAL';
+                modeStatus.style.color = '#0f0';
+                speak('戦闘モード解除。通常システムに復帰します。');
+            }
         }
 
         // 画面上タブの表示と読み込み
@@ -552,6 +646,9 @@
                 };
 
                 recognition.onresult = function(event) {
+                    // J.A.R.V.I.S.自身が発声している間は音声を無視（自己認識フィードバックループ防止）
+                    if (isJarvisSpeaking) return;
+
                     const lastIndex = event.results.length - 1;
                     const transcript = event.results[lastIndex][0].transcript.trim();
                     
@@ -589,7 +686,33 @@
         function processCommand(cmd) {
             const command = cmd.toLowerCase();
 
-            // --- 0. 音量・明るさ・画面拡大縮小設定 ---
+            // --- 0. 全画面表示 / 温度カメラ / 戦闘モード判定 ---
+            if (/全画面|フルスクリーン|画面拡大|画面を全画面/.test(cmd)) {
+                toggleFullscreen(true);
+                return;
+            } else if (/全画面解除|フルスクリーン解除|画面を元に戻す/.test(cmd) && document.fullscreenElement) {
+                toggleFullscreen(false);
+                return;
+            }
+
+            if (/温度カメラ|サーモグラフィ|サーマル/i.test(cmd)) {
+                if (/解除|オフ|OFF|通常/i.test(cmd)) {
+                    setThermalMode(false);
+                } else {
+                    setThermalMode(true);
+                }
+                return;
+            }
+
+            if (/戦闘モード|バトルモード|攻撃モード/i.test(cmd)) {
+                setCombatMode(true);
+                return;
+            } else if (/通常モード|戦闘モード解除|バトルモード解除|通常画面/i.test(cmd)) {
+                setCombatMode(false);
+                return;
+            }
+
+            // --- 1. 音量・明るさ・画面拡大縮小設定 ---
             const volMatch = cmd.match(/(?:音量|ボリューム)(?:を|は)?\s*(\d+)(?:%|パーセント)?/);
             if (volMatch) {
                 let val = parseInt(volMatch[1], 10);
@@ -631,12 +754,12 @@
                 document.getElementById('hud-container').style.transform = `scale(${uiScale})`;
                 speak(`画面表示のサイズを${val}パーセントに設定しました。`);
                 return;
-            } else if (/(?:画面|表示|UI|文字).*(?:大|拡大|大きく)/.test(cmd) || /拡大/.test(cmd)) {
+            } else if (/(?:画面|表示|UI|文字).*(?:大|拡大|大きく)/.test(cmd) && !/全画面/.test(cmd)) {
                 uiScale = Math.min(2.0, uiScale + 0.15);
                 document.getElementById('hud-container').style.transform = `scale(${uiScale})`;
                 speak(`画面表示を拡大しました。`);
                 return;
-            } else if (/(?:画面|表示|UI|文字).*(?:小|縮小|小さく)/.test(cmd) || /縮小/.test(cmd)) {
+            } else if (/(?:画面|表示|UI|文字).*(?:小|縮小|小さく)/.test(cmd)) {
                 uiScale = Math.max(0.5, uiScale - 0.15);
                 document.getElementById('hud-container').style.transform = `scale(${uiScale})`;
                 speak(`画面表示を縮小しました。`);
@@ -648,7 +771,7 @@
                 return;
             }
 
-            // --- 1. 名前の設定と記憶 ---
+            // --- 2. 名前の設定と記憶 ---
             const nameMatch = cmd.match(/(?:僕|私|オレ|わたし|ぼく)?の名前は\s*(.+?)(?:です|だよ|だ|ー)?$/) ||
                               cmd.match(/(.+?)って呼んで/) ||
                               cmd.match(/名前を\s*(.+?)(?:に|と)(?:覚えて|変更|設定)/);
@@ -663,7 +786,7 @@
                 return;
             }
 
-            // --- 2. 音楽の再生（柔軟な意図読み取り） ---
+            // --- 3. 音楽の再生（柔軟な意図読み取り） ---
             const musicMatch = cmd.match(/(.+?)の?(?:音楽|曲|bgm|ミュージック|ソング)(?:を|でも)?(?:流して|かけて|再生|聴きたい|流す)/) ||
                                cmd.match(/(.+?)を(?:流して|かけて|再生して)/);
             if (musicMatch && musicMatch[1] && !cmd.includes('カメラ') && !cmd.includes('タブ')) {
@@ -675,7 +798,7 @@
                 return;
             }
 
-            // --- 3. Webサイト／タブ表示（Google検索対応） ---
+            // --- 4. Webサイト／タブ表示（Google検索対応） ---
             if (/google|グーグル|検索画面|ブラウザ/i.test(cmd) && /開|表示|見せ/.test(cmd)) {
                 speak('画面上にGoogle検索を表示します。');
                 openTab('https://www.google.com/search?igu=1', 'Google');
@@ -690,8 +813,8 @@
                 return;
             }
 
-            // --- 4. タブ表示・非表示の柔軟判定 ---
-            if (/(?:タブ|画面).*(?:表示|開|見せ|出し|つけ)/.test(cmd)) {
+            // --- 5. タブ表示・非表示の柔軟判定 ---
+            if (/(?:タブ|画面).*(?:表示|開|見せ|出し|つけ)/.test(cmd) && !/全画面/.test(cmd)) {
                 speak('画面上にタブを表示しました。操作が可能です。');
                 openTab(document.getElementById('tab-iframe').src || 'https://www.google.com/search?igu=1', 'DISPLAY TAB');
                 return;
@@ -701,7 +824,7 @@
                 return;
             }
 
-            // --- 5. カメラ切り替え判定 ---
+            // --- 6. カメラ切り替え判定 ---
             if (/アウトカメラ|背面|外.*カメラ/.test(cmd)) {
                 speak('アウトカメラに切り替えます。右下にインカメラを表示します。');
                 setupCamera('environment');
@@ -721,7 +844,7 @@
                 return;
             }
 
-            // --- 6. 検索・Google調べる判定 ---
+            // --- 7. 検索・Google調べる判定 ---
             if (/(?:について)?(?:教えて|調べ|検索)|とは何|とは/i.test(cmd)) {
                 let keyword = cmd.replace(/について|教えて|調べ|検索|とは何|とは|を|て/g, '').trim();
                 if (keyword.endsWith('の')) keyword = keyword.slice(0, -1);
@@ -734,7 +857,7 @@
                 return;
             }
 
-            // --- 7. 会話・応答 ---
+            // --- 8. 会話・応答 ---
             if (/こんにちは|おはよう|こんばんは|やあ/.test(cmd)) {
                 speak(`こんにちは、${userName}様。本日もシステムはすべて順調です。`);
             } else if (/ありがとう|サンキュー|感謝/.test(cmd)) {
@@ -758,14 +881,16 @@
             } else if (/スキャン|分析|解析/.test(cmd)) {
                 speak('周囲の環境をスキャンしています... 脅威は検出されませんでした。');
                 document.getElementById('target-reticle').style.borderColor = '#0f0';
-                setTimeout(() => document.getElementById('target-reticle').style.borderColor = 'rgba(255,255,255,0.3)', 3000);
+                setTimeout(() => document.getElementById('target-reticle').style.borderColor = 'var(--hud-border-color)', 3000);
             } 
             
-            // --- 8. シャットダウン・スリープ ---
+            // --- 9. シャットダウン・スリープ ---
             else if (/終了|シャットダウン|スリープ|おやすみ|バイバイ/.test(cmd)) {
                 speak(`システムをスリープ状態に移行します。おやすみなさいませ、${userName}様。`);
                 isAwake = false;
                 closeTab();
+                setThermalMode(false);
+                setCombatMode(false);
                 
                 // 目を閉じる
                 document.getElementById('eye-top').style.height = '50vh';
