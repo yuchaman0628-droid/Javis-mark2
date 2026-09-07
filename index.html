@@ -49,7 +49,56 @@
         }
 
         #status-box { top: 20px; left: 20px; width: 250px; }
-        #info-box { top: 20px; right: 20px; width: 250px; text-align: right; } /* 日付・天気用に追加 */
+        #info-box { top: 20px; right: 20px; width: 250px; text-align: right; } /* 日付・天気用 */
+
+        /* 画面上タブウィンドウ（操作可能） */
+        #tab-window {
+            position: absolute;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 75vw;
+            height: 55vh;
+            background: rgba(0, 15, 30, 0.95);
+            border: 2px solid #0ff;
+            box-shadow: 0 0 20px #0ff;
+            z-index: 40;
+            display: none;
+            pointer-events: auto; /* クリックやスクロールなどのマウス操作を有効化 */
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #tab-header {
+            background: rgba(0, 255, 255, 0.2);
+            color: #0ff;
+            padding: 8px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            border-bottom: 1px solid #0ff;
+        }
+
+        #tab-close-btn {
+            background: transparent;
+            border: 1px solid #0ff;
+            color: #0ff;
+            cursor: pointer;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        #tab-close-btn:hover {
+            background: #0ff;
+            color: #000;
+        }
+
+        #tab-iframe {
+            width: 100%;
+            height: calc(100% - 35px);
+            border: none;
+            background: #fff;
+        }
         
         /* 字幕の配置（画面中央下） */
         #log-box { 
@@ -113,13 +162,30 @@
             100% { transform: translate(-50%, -50%) rotate(360deg); }
         }
 
-        /* カメラ映像 */
+        /* カメラ映像（メイン） */
         #camera-feed {
             width: 100vw;
             height: 100vh;
             object-fit: cover;
             filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.7);
             z-index: 1;
+        }
+
+        /* 右下のインカメラ小窓（アウトカメラ起動時に使用） */
+        #sub-camera-feed {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 180px;
+            height: 135px;
+            border: 2px solid #0ff;
+            box-shadow: 0 0 15px #0ff;
+            border-radius: 8px;
+            object-fit: cover;
+            filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) opacity(0.8);
+            z-index: 35;
+            display: none;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -130,7 +196,9 @@
     <div id="eye-bottom" class="eye-lid"></div>
 
     <!-- カメラ映像 -->
-    <video id="camera-feed" autoplay playsinline></video>
+    <video id="camera-feed" autoplay playsinline muted></video>
+    <!-- 右下インカメラ小窓用映像 -->
+    <video id="sub-camera-feed" autoplay playsinline muted></video>
 
     <!-- HUDレイヤー -->
     <div id="hud-container">
@@ -144,6 +212,15 @@
         <div id="info-box" class="hud-element">
             <h3 id="date-display">DATE: STANDBY</h3>
             <p id="weather-display">WEATHER: STANDBY</p>
+        </div>
+
+        <!-- 画面上表示タブウィンドウ -->
+        <div id="tab-window">
+            <div id="tab-header">
+                <span id="tab-title">J.A.R.V.I.S. DISPLAY TAB</span>
+                <button id="tab-close-btn" onclick="closeTab()">✕ 閉じる</button>
+            </div>
+            <iframe id="tab-iframe" src="about:blank"></iframe>
         </div>
 
         <div id="target-reticle" class="hud-element"></div>
@@ -165,6 +242,9 @@
         let isAwake = false;
         let currentWeatherJa = "不明"; // 天気読み上げ用
         let currentTemp = "不明"; // 気温読み上げ用
+        let currentFacingMode = 'user'; // 'user' (インカメラ) または 'environment' (アウトカメラ)
+        let mainStream = null;
+        let subStream = null;
 
         // ページ読み込みと同時に音声認識を開始
         window.onload = function() {
@@ -199,6 +279,79 @@
             synth.speak(utterance);
         }
 
+        // 画面上タブの表示と読み込み
+        function openTab(url, title = "DISPLAY TAB") {
+            const tabWindow = document.getElementById('tab-window');
+            const tabIframe = document.getElementById('tab-iframe');
+            const tabTitle = document.getElementById('tab-title');
+            
+            if (url) {
+                tabIframe.src = url;
+            }
+            tabTitle.innerText = title;
+            tabWindow.style.display = 'block';
+        }
+
+        // 画面上タブを閉じる
+        function closeTab() {
+            document.getElementById('tab-window').style.display = 'none';
+        }
+
+        // 全カメラストリームを停止
+        function stopAllCameras() {
+            if (mainStream) {
+                mainStream.getTracks().forEach(track => track.stop());
+                mainStream = null;
+            }
+            if (subStream) {
+                subStream.getTracks().forEach(track => track.stop());
+                subStream = null;
+            }
+            document.getElementById('sub-camera-feed').style.display = 'none';
+        }
+
+        // カメラ設定・切り替え関数
+        async function setupCamera(facingMode = 'user') {
+            stopAllCameras();
+            currentFacingMode = facingMode;
+
+            const video = document.getElementById('camera-feed');
+            const subVideo = document.getElementById('sub-camera-feed');
+
+            try {
+                if (facingMode === 'environment') {
+                    // アウトカメラをメイン画面に設定
+                    try {
+                        mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } } });
+                    } catch (e) {
+                        mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                    }
+                    video.srcObject = mainStream;
+
+                    // 右下にインカメラ（自分）を小さく表示
+                    try {
+                        subStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                        subVideo.srcObject = subStream;
+                        subVideo.style.display = 'block';
+                    } catch (e) {
+                        console.log("サブカメラ(インカメラ)の起動に失敗しました", e);
+                    }
+                } else {
+                    // インカメラをメイン画面に設定
+                    mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                    video.srcObject = mainStream;
+                    subVideo.style.display = 'none';
+                }
+
+                document.getElementById('cam-status').innerText = facingMode === 'environment' ? 'ONLINE (OUT)' : 'ONLINE (IN)';
+                document.getElementById('cam-status').style.color = '#0f0';
+            } catch (err) {
+                addLog('エラー: カメラにアクセスできません。', true);
+                document.getElementById('cam-status').innerText = 'ERROR';
+                document.getElementById('cam-status').style.color = '#f00';
+            }
+        }
+
         // 起動シーケンス（目を開く ＆ カメラ起動 ＆ 天気取得）
         async function wakeUp() {
             isAwake = true;
@@ -209,16 +362,8 @@
             
             speak('システムを起動しました。カメラとネットワークに接続します。');
 
-            // カメラの起動
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                const video = document.getElementById('camera-feed');
-                video.srcObject = stream;
-                document.getElementById('cam-status').innerText = 'ONLINE';
-                document.getElementById('cam-status').style.color = '#0f0';
-            } catch (err) {
-                addLog('エラー: カメラにアクセスできません。', true);
-            }
+            // カメラの起動（初期値: インカメラ）
+            await setupCamera('user');
 
             // 日付と天気の取得
             updateDateAndWeather();
@@ -255,11 +400,15 @@
                 });
         }
 
-        // Wikipedia APIを使用して検索して解説する関数
+        // Wikipedia APIを使用して検索して解説する関数 ＆ 画面上タブに表示
         async function searchAndExplain(keyword) {
             speak(`データベースにアクセスし、「${keyword}」について検索します。`);
+            
+            // 画面上にWikipediaのページを読み込んで表示
+            openTab(`https://ja.m.wikipedia.org/wiki/${encodeURIComponent(keyword)}`, `SEARCH: ${keyword}`);
+
             try {
-                // Wikipedia API を叩く
+                // Wikipedia API を叩いて概要を取得
                 const url = `https://ja.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro&explaintext&redirects=1&titles=${encodeURIComponent(keyword)}&origin=*`;
                 const response = await fetch(url);
                 const data = await response.json();
@@ -271,7 +420,6 @@
                     speak(`申し訳ありません、「${keyword}」に関する情報は見つかりませんでした。`);
                 } else {
                     const extract = pages[pageId].extract;
-                    // 長すぎる場合は最初の100文字程度にカットして読み上げる
                     const shortText = extract.substring(0, 150) + (extract.length > 150 ? "..." : "");
                     speak(shortText);
                 }
@@ -298,7 +446,7 @@
                     const lastIndex = event.results.length - 1;
                     const transcript = event.results[lastIndex][0].transcript.trim();
                     
-                    // 【修正点】空文字や2文字未満の雑音・咳払いなどは無視して処理しない
+                    // 空文字や2文字未満の雑音は無視
                     if (!transcript || transcript.length < 2) {
                         return;
                     }
@@ -316,16 +464,13 @@
                 };
 
                 recognition.onerror = function(event) {
-                    // エラー時もコンソールに出力しつつ再起動を試みる
                     console.log('Voice Recognition Error:', event.error);
                 };
 
                 recognition.onend = function() {
-                    // 音声認識が途切れても自動で再起動
                     recognition.start();
                 };
 
-                // マイクの許可を求めて開始
                 recognition.start();
             } else {
                 addLog('エラー: お使いのブラウザは音声認識をサポートしていません。', true);
@@ -334,21 +479,47 @@
 
         // コマンド処理
         function processCommand(command) {
-            // --- サイト・アプリを開く機能 ---
-            if (command.includes('YouTube') && (command.includes('開いて') || command.includes('見せて'))) {
-                speak('承知しました。YouTubeを開きます。');
-                window.open('https://www.youtube.com', '_blank');
+            // --- カメラ切り替え機能 ---
+            if (command.includes('アウトカメラ') || command.includes('背面カメラ') || command.includes('外のカメラ') || command.includes('外カメラ')) {
+                speak('アウトカメラに切り替えます。右下にインカメラを表示します。');
+                setupCamera('environment');
+            } else if (command.includes('インカメラ') || command.includes('前面カメラ') || command.includes('内カメラ') || command.includes('元のカメラ')) {
+                speak('インカメラに切り替えます。');
+                setupCamera('user');
+            } else if (command.includes('カメラ切り替え') || command.includes('カメラを切り替え') || command.includes('カメラ変えて')) {
+                if (currentFacingMode === 'user') {
+                    speak('アウトカメラに切り替えます。');
+                    setupCamera('environment');
+                } else {
+                    speak('インカメラに切り替えます。');
+                    setupCamera('user');
+                }
+            }
+
+            // --- サイト・アプリを画面上タブで開く機能 ---
+            else if (command.includes('YouTube') && (command.includes('開いて') || command.includes('見せて'))) {
+                speak('画面上にYouTubeを表示します。');
+                openTab('https://www.youtube.com', 'YouTube');
             } else if ((command.includes('Google') || command.includes('グーグル')) && command.includes('開いて')) {
-                speak('承知しました。Google検索を開きます。');
-                window.open('https://www.google.com', '_blank');
+                speak('画面上にGoogleを表示します。');
+                openTab('https://www.google.com', 'Google');
             } else if ((command.includes('Twitter') || command.includes('X') || command.includes('エックス')) && command.includes('開いて')) {
-                speak('承知しました。Xを開きます。');
-                window.open('https://twitter.com', '_blank');
+                speak('画面上にXを表示します。');
+                openTab('https://twitter.com', 'X');
             } 
             
-            // --- 検索して解説する機能 ---
-            else if (command.includes('について教えて') || command.includes('とは何') || command.includes('を検索して')) {
-                let keyword = command.replace('について教えて', '').replace('について', '').replace('とは何', '').replace('とは', '').replace('を検索して', '').replace('検索して', '').trim();
+            // --- タブの表示・非表示コントロール ---
+            else if (command.includes('タブを表示') || command.includes('画面を表示') || command.includes('タブを開いて')) {
+                speak('画面上にタブを表示しました。操作が可能です。');
+                openTab(document.getElementById('tab-iframe').src || 'https://ja.m.wikipedia.org', 'DISPLAY TAB');
+            } else if (command.includes('タブを消して') || command.includes('タブを閉じて') || command.includes('画面を閉じて')) {
+                speak('タブを閉じました。');
+                closeTab();
+            }
+
+            // --- 検索して解説・画面上タブ表示機能 ---
+            else if (command.includes('について教えて') || command.includes('とは何') || command.includes('を検索して') || command.includes('を調べて') || command.includes('について調べて')) {
+                let keyword = command.replace('について教えて', '').replace('について調べ', '').replace('について', '').replace('とは何', '').replace('とは', '').replace('を検索して', '').replace('検索して', '').replace('を調べて', '').replace('調べて', '').trim();
                 if (keyword.endsWith('の')) keyword = keyword.slice(0, -1);
                 
                 if (keyword) {
@@ -389,17 +560,14 @@
             else if (command.includes('終了') || command.includes('シャットダウン') || command.includes('スリープ')) {
                 speak('システムをスリープ状態に移行します。おやすみなさいませ、ボス。');
                 isAwake = false;
+                closeTab();
                 
                 // 目を閉じる
                 document.getElementById('eye-top').style.height = '50vh';
                 document.getElementById('eye-bottom').style.height = '50vh';
                 
                 // カメラ停止
-                const video = document.getElementById('camera-feed');
-                if(video.srcObject) {
-                    video.srcObject.getTracks().forEach(track => track.stop());
-                    video.srcObject = null;
-                }
+                stopAllCameras();
                 document.getElementById('cam-status').innerText = 'OFF';
                 document.getElementById('cam-status').style.color = '#0ff';
                 setTimeout(() => addLog("システムはスリープ状態です。「起動」または「ジャーヴィス」と話しかけてください。"), 1000);
