@@ -259,7 +259,7 @@
                 <button id="tab-close-btn" onclick="closeTab()">✕ 閉じる</button>
             </div>
             <div id="tab-iframe-container">
-                <iframe id="tab-iframe" src="about:blank" allow="autoplay; encrypted-media"></iframe>
+                <iframe id="tab-iframe" src="about:blank" allow="autoplay; encrypted-media; accelerometer; gyroscope; picture-in-picture"></iframe>
             </div>
         </div>
 
@@ -502,7 +502,6 @@
             });
         }
 
-        /* 修正: 確実に動作するフルスクリーン切替 */
         function toggleFullscreen(enable) {
             const docEl = document.documentElement;
             const isFull = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
@@ -573,7 +572,6 @@
             speak('すべての特殊モードおよびフルスクリーンを解除し、通常モードに戻しました。');
         }
 
-        /* 修正: Googleカメラ (Google Lens/画像検索) 機能の構築 */
         function analyzeWithGoogleLens() {
             speak('カメラの映像をスキャンし、Googleカメラで画像解析を行います。');
 
@@ -759,18 +757,20 @@
 
         function playMusic(query) {
             speak(`${userName}様、${query}の音楽を再生します。`);
-            const embedUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(query + ' 音楽 BGM')}`;
+            // 再生エラーを防ぐため、埋め込みパラメータ（autoplay=1, playsinline=1, enablejsapi=1等）を追加
+            const embedUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(query + ' 音楽 BGM')}&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
             openTab(embedUrl, `MUSIC: ${query}`);
         }
 
         function openYouTube(query = '') {
             if (query) {
                 speak(`YouTubeで「${query}」を検索します。`);
-                const searchUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(query)}`;
+                const searchUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(query)}&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
                 openTab(searchUrl, `YOUTUBE: ${query}`);
             } else {
                 speak('YouTubeを表示します。');
-                openTab('https://www.youtube-nocookie.com/embed?listType=search&list=人気動画', 'YOUTUBE');
+                const defaultUrl = `https://www.youtube-nocookie.com/embed?listType=search&list=人気動画&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
+                openTab(defaultUrl, 'YOUTUBE');
             }
         }
 
@@ -838,16 +838,20 @@
         function processCommand(cmd) {
             const command = cmd.toLowerCase();
 
-            // 録画・写真撮影
-            if (/画面録画(を)?(開始|スタート|始めて)/.test(cmd) || /録画(を)?(開始|スタート)/.test(cmd)) {
-                startScreenRecording();
-                return;
+            // 録画コマンド
+            if (/録画(して|を開始|スタート|始めて)?/ .test(cmd) || /画面録画(を)?(開始|スタート|始めて|して)/.test(cmd)) {
+                if (!/録画(を)?(停止|ストップ|止めて|終了)/.test(cmd)) {
+                    startScreenRecording();
+                    return;
+                }
             }
-            if (/画面録画(を)?(停止|ストップ|止めて|終了)/.test(cmd) || /録画(を)?(停止|ストップ)/.test(cmd)) {
+            if (/録画(を)?(停止|ストップ|止めて|終了)/.test(cmd) || /画面録画(を)?(停止|ストップ|止めて|終了)/.test(cmd)) {
                 stopScreenRecording();
                 return;
             }
-            if (/写真(を)?(撮って|撮影)|スクショ|スクリーンショット/.test(cmd)) {
+
+            // 写真撮影コマンド
+            if (/写真(を)?(撮って|撮影|取る|とる)|スクショ|スクリーンショット/.test(cmd)) {
                 takePhoto();
                 return;
             }
@@ -899,7 +903,7 @@
                 return;
             }
 
-            // 修正: Googleカメラ (これ何 / レンズ機能)
+            // Googleカメラ
             if (/これ(は|が)?何|なにこれ|これ調べて|グーグルカメラ|googleカメラ|グーグルレンズ|googleレンズ/i.test(cmd)) {
                 analyzeWithGoogleLens();
                 return;
@@ -911,7 +915,7 @@
                 return;
             }
 
-            // 修正: 全画面（フルスクリーン）
+            // 全画面
             if (/全画面|フルスクリーン|画面拡大/.test(cmd)) {
                 toggleFullscreen(true);
                 return;
@@ -920,7 +924,7 @@
                 return;
             }
 
-            // サーマルカメラ・戦闘モード
+            // サーマル・戦闘モード
             if (/温度カメラ|サーモグラフィ|サーマル/i.test(cmd)) {
                 if (/解除|オフ|OFF/i.test(cmd)) {
                     setThermalMode(false);
@@ -974,7 +978,7 @@
             // 名前記憶
             const nameMatch = cmd.match(/(?:僕|私|オレ|わたし|ぼく)?の名前は\s*(.+?)(?:です|だよ|だ|ー)?$/) ||
                               cmd.match(/(.+?)って呼んで/) ||
-                              cmd.match(/名前を\s*(.+?)(?:に|と)(?:覚えて|変更|設定)/);
+                              cmd.match(/名前を\s*(.+?)(?:i|に|と)(?:覚えて|変更|設定)/);
             if (nameMatch && nameMatch[1] && !cmd.includes('何') && !cmd.includes('覚えてる')) {
                 const extractedName = nameMatch[1].replace(/です|だよ|と|に|とお呼び/g, '').trim();
                 saveUserName(extractedName);
