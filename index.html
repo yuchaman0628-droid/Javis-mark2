@@ -938,6 +938,55 @@
             speak('すべての特殊モードおよびフルスクリーンを解除し、通常モードに戻しました。');
         }
 
+        // --- 追加：スマホモード・パソコンモードの切り替え関数 ---
+        function setDeviceOperationMode(mode) {
+            playSciFiSound('beep');
+            const statusBox = document.getElementById('status-box');
+            const infoBox = document.getElementById('info-box');
+            const logBox = document.getElementById('log-box');
+            const tabWindow = document.getElementById('tab-window');
+            const targetReticle = document.getElementById('target-reticle');
+
+            if (mode === 'smartphone') {
+                // スマホモード：タッチ操作最適化、要素のコンパクト化、自動全画面化など
+                document.body.style.zoom = '1.0';
+                if (statusBox) statusBox.style.width = '85vw';
+                if (infoBox) infoBox.style.display = 'none';
+                if (logBox) {
+                    logBox.style.width = '92%';
+                    logBox.style.bottom = '10px';
+                }
+                if (tabWindow) {
+                    tabWindow.style.width = '95vw';
+                    tabWindow.style.height = '65vh';
+                }
+                if (targetReticle) {
+                    targetReticle.style.width = '180px';
+                    targetReticle.style.height = '180px';
+                }
+                speak('スマートフォンモードに最適化しました。');
+            } else if (mode === 'pc') {
+                // パソコンモード：デスクトップ向けの広いレイアウト配置に調整
+                document.body.style.zoom = '1.0';
+                if (statusBox) statusBox.style.width = '250px';
+                if (infoBox) infoBox.style.display = 'block';
+                if (logBox) {
+                    logBox.style.width = '70%';
+                    logBox.style.bottom = '30px';
+                }
+                if (tabWindow) {
+                    tabWindow.style.width = '75vw';
+                    tabWindow.style.height = '55vh';
+                }
+                if (targetReticle) {
+                    targetReticle.style.width = '300px';
+                    targetReticle.style.height = '300px';
+                }
+                speak('パソコンモードに最適化しました。');
+            }
+        }
+        // --------------------------------------------------------
+
         function analyzeWithGoogleLens() {
             playSciFiSound('beep');
             speak('Googleレンズの検索タブを別ウィンドウで開きます。');
@@ -1231,10 +1280,8 @@
             }
 
             try {
-                // ウィキペディアまたは外部検索的な簡易AI知識拡張ロジックを非同期で実行しつつリッチな応答を組み立て
                 let aiResponse = "";
                 
-                // 挨拶・日常会話の拡張
                 if (/調子はどう|元気？|どう？/.test(cmd)) {
                     aiResponse = `システムの稼働状態、および私のニューラルネットワークはすべて正常です。${userName}様からの新たなご指示をお待ちしております。`;
                 } else if (/ありがとう|助かる|すごい/.test(cmd)) {
@@ -1242,7 +1289,6 @@
                 } else if (/暇|退屈|なんか話して/.test(cmd)) {
                     aiResponse = `承知いたしました。現在、世界の主要ネットワークおよび気象データは安定しています。何か特定のプロジェクトやシミュレーションの話題について議論なさいますか？`;
                 } else {
-                    // 一般的な質問や雑談・高度な問い合わせに対する文脈自動推論応答
                     aiResponse = `${userName}様のご質問「${cmd}」について解析しました。この件に関する詳細なデータやウェブ上の情報をまとめるには、Google検索ウィンドウを展開するか、具体的なキーワードをご指定いただくのが有効かと存じます。`;
                 }
 
@@ -1257,6 +1303,17 @@
 
         function processCommand(cmd) {
             const command = cmd.toLowerCase();
+
+            // --- 追加：スマホモード・パソコンモードの音声コマンド判定 ---
+            if (/スマホモード/i.test(cmd)) {
+                setDeviceOperationMode('smartphone');
+                return;
+            }
+            if (/パソコンモード|PCモード/i.test(cmd)) {
+                setDeviceOperationMode('pc');
+                return;
+            }
+            // -------------------------------------------------------
 
             // 銃・ミサイル発射コマンド
             if (/ミサイル|発射|撃て|撃つ/i.test(cmd)) {
@@ -1507,7 +1564,6 @@
                 document.getElementById('cam-status').innerText = 'OFF';
                 document.getElementById('cam-status').style.color = '#fff';
             } else {
-                // --- 従来のフォールバック応答を拡張AIチャット機能にルーティング ---
                 handleAdvancedAIChat(cmd);
             }
         }
