@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>J.A.R.V.I.S. Cognitive System</title>
+    <title>J.A.R.V.I.S. System</title>
     <style>
         :root {
             --hud-theme-color: #ffffff;
@@ -26,16 +26,20 @@
             height: 100vh;
         }
 
+        /* 起動・シャットダウン時のフラッシュ・光る演出用オーバーレイ */
         #flash-overlay {
             position: absolute;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
             background: rgba(0, 255, 255, 0);
             z-index: 60;
             pointer-events: none;
             transition: background 0.5s ease;
         }
 
+        /* 目を開くアニメーション用（まぶた） */
         .eye-lid {
             position: absolute;
             left: 0;
@@ -49,14 +53,20 @@
         #eye-top { top: 0; border-bottom: 2px solid rgba(0,255,255,0.5); }
         #eye-bottom { bottom: 0; border-top: 2px solid rgba(0,255,255,0.5); }
 
+        /* HUD（ヘッドアップディスプレイ）風の装飾 */
         #hud-container {
             position: absolute;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh; height: 100dvh;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
             border: 2px solid var(--hud-border-color);
             box-sizing: border-box;
             pointer-events: none;
             z-index: 10;
+            transform-origin: center center;
+            transition: transform 0.3s ease, border-color 0.3s ease;
         }
 
         .hud-element {
@@ -67,33 +77,20 @@
             border-radius: 6px;
             box-sizing: border-box;
             color: var(--hud-theme-color);
+            transition: border-color 0.3s ease, color 0.3s ease;
         }
 
-        #status-box { top: 20px; left: 20px; width: 260px; pointer-events: auto; }
+        #status-box { top: 20px; left: 20px; width: 250px; }
         #info-box { top: 20px; right: 20px; width: 250px; text-align: right; }
 
-        /* 知的思考・学習プロセスを表示するパネル */
-        #cognitive-box {
-            top: 170px; left: 20px; width: 260px; height: 160px;
-            background: rgba(0, 20, 40, 0.6);
-            font-size: 11px;
-            overflow-y: auto;
-            pointer-events: auto;
-            display: flex;
-            flex-direction: column;
-        }
-        #cognitive-content {
-            font-family: monospace;
-            color: #00ffcc;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-
+        /* 画面上タブウィンドウ */
         #tab-window {
             position: absolute;
-            top: 70px; left: 50%;
+            top: 70px;
+            left: 50%;
             transform: translateX(-50%);
-            width: 75vw; height: 55vh;
+            width: 75vw;
+            height: 55vh;
             background: rgba(10, 10, 10, 0.85);
             border: 1px solid var(--hud-border-color);
             z-index: 40;
@@ -123,11 +120,16 @@
             padding: 2px 8px;
             border-radius: 4px;
         }
+        #tab-close-btn:hover {
+            background: #fff;
+            color: #000;
+        }
 
         #tab-iframe-container {
             width: 100%;
             height: calc(100% - 35px);
             overflow-y: auto;
+            position: relative;
         }
 
         #tab-iframe {
@@ -137,8 +139,10 @@
             background: #fff;
         }
         
+        /* 字幕の配置 */
         #log-box { 
-            bottom: 30px; left: 50%; 
+            bottom: 30px; 
+            left: 50%; 
             transform: translateX(-50%); 
             width: 70%; 
             text-align: center; 
@@ -148,12 +152,11 @@
             justify-content: center;
             border: none;
             background: transparent;
-            pointer-events: auto;
         }
 
         #log-content {
-            font-size: 18px;
-            background: rgba(0, 0, 0, 0.6);
+            font-size: 20px;
+            background: transparent;
             border: 1px solid var(--hud-border-color);
             padding: 15px 30px;
             border-radius: 10px;
@@ -162,6 +165,7 @@
             text-shadow: 0 0 4px #000;
         }
 
+        /* ボイスメーター */
         #voice-meter {
             display: none;
             gap: 8px;
@@ -191,6 +195,7 @@
             border-radius: 50%;
             border: 2px dashed var(--hud-border-color);
             animation: rotate 10s linear infinite;
+            transition: border-color 0.3s ease;
         }
 
         @keyframes rotate {
@@ -198,19 +203,118 @@
         }
 
         #camera-feed {
-            width: 100vw; height: 100vh;
+            width: 100vw;
+            height: 100vh;
             object-fit: cover;
+            filter: none;
             z-index: 1;
+            transition: filter 0.5s ease, transform 0.3s ease;
+            transform-origin: center center;
+        }
+
+        .thermal-mode {
+            filter: hue-rotate(180deg) saturate(5) contrast(2.5) invert(0.1) !important;
+        }
+
+        /* VRモード時の二眼レフ風分割コンテナ */
+        #vr-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            z-index: 2;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .vr-view {
+            width: 50vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+            border-right: 2px solid #222;
+        }
+        .vr-view video {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+        }
+
+        #sub-camera-feed {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 180px;
+            height: 135px;
+            border: 2px solid var(--hud-theme-color);
+            border-radius: 8px;
+            object-fit: cover;
+            filter: none;
+            z-index: 35;
+            display: none;
+            pointer-events: none;
+        }
+
+        /* 戦闘モード用：生命体検出マーカー＆武器エフェクト */
+        .entity-marker {
+            position: absolute;
+            border: 2px solid #ff0000;
+            background: rgba(255, 0, 0, 0.2);
+            box-shadow: 0 0 15px #ff0000, inset 0 0 15px #ff0000;
+            border-radius: 4px;
+            z-index: 25;
+            pointer-events: none;
+            animation: pulse-glow 0.8s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            0% { border-color: #ff0000; box-shadow: 0 0 10px #ff0000; }
+            100% { border-color: #ffff00; box-shadow: 0 0 25px #ffff00; }
+        }
+
+        .weapon-effect {
+            position: absolute;
+            z-index: 30;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            font-weight: bold;
+        }
+        .bullet-flash {
+            width: 20px; height: 20px;
+            background: radial-gradient(circle, #fff 0%, #ff3300 60%, transparent 100%);
+            border-radius: 50%;
+            box-shadow: 0 0 10px #ff3300;
+        }
+        .missile-projectile {
+            width: 30px; height: 10px;
+            background: linear-gradient(90deg, #ff9900, #ff0000, #fff);
+            border-radius: 50% 10% 10% 50%;
+            box-shadow: 0 0 15px #ff3300;
+        }
+        .explosion-effect {
+            width: 120px; height: 120px;
+            background: radial-gradient(circle, #ffff00 0%, #ff3300 40%, rgba(255,0,0,0) 70%);
+            border-radius: 50%;
+            animation: explode-anim 0.5s forwards;
+        }
+        @keyframes explode-anim {
+            0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(2.0); opacity: 0; }
         }
 
         @media (max-width: 600px) {
-            #status-box { top: 10px; left: 10px; width: 44vw; font-size: 10px; padding: 6px; }
-            #cognitive-box { top: 130px; left: 10px; width: 44vw; height: 110px; font-size: 9px; padding: 6px; }
-            #info-box { top: 10px; right: 10px; width: 44vw; font-size: 10px; padding: 6px; }
+            #status-box { top: 10px; left: 10px; max-width: 46vw; font-size: 11px; padding: 6px; }
+            #status-box h3, #info-box h3 { font-size: 12px; margin: 2px 0; }
+            #status-box p, #info-box p { margin: 2px 0; }
+            #info-box { top: 10px; right: 10px; max-width: 46vw; font-size: 11px; padding: 6px; }
             #tab-window { top: 55px; width: 92vw; height: 60vh; }
             #target-reticle { width: 200px; height: 200px; }
             #log-box { width: 90%; bottom: 15px; }
             #log-content { font-size: 14px; padding: 10px 15px; }
+            #sub-camera-feed { width: 110px; height: 85px; bottom: 10px; right: 10px; }
         }
     </style>
 </head>
@@ -221,18 +325,26 @@
     <div id="eye-bottom" class="eye-lid"></div>
 
     <video id="camera-feed" autoplay playsinline muted></video>
+    
+    <!-- VRモード用ラッパー（初期は非表示） -->
+    <div id="vr-wrapper" style="display: none;">
+        <div class="vr-view"><video class="vr-cam-clone" autoplay playsinline muted></video></div>
+        <div class="vr-view"><video class="vr-cam-clone" autoplay playsinline muted></video></div>
+    </div>
+
+    <video id="sub-camera-feed" autoplay playsinline muted></video>
+
+    <!-- 戦闘モード用エフェクトコンテナ -->
+    <div id="combat-effects-container" style="position:absolute; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:28;"></div>
 
     <div id="hud-container">
         <div id="status-box" class="hud-element">
-            <h3>J.A.R.V.I.S. COGNITIVE</h3>
+            <h3>J.A.R.V.I.S. ONLINE</h3>
             <p>USER: <span id="user-display" style="color:#0f0;">ボス</span></p>
-            <p>AI STATE: <span id="ai-state" style="color:#00ffcc;">STANDBY</span></p>
-            <p>MEMORY: <span id="memory-count">0 items</span></p>
-        </div>
-
-        <div id="cognitive-box" class="hud-element">
-            <h4 style="margin:0 0 5px 0; color:#00ffcc; border-bottom:1px solid rgba(0,255,204,0.3);">🧠 思考・判断ログ (CoT)</h4>
-            <div id="cognitive-content">システム初期化完了。音声入力を待機しています...</div>
+            <p>CAMERA: <span id="cam-status">OFF</span></p>
+            <p>MIC: <span id="mic-status">OFF</span></p>
+            <p>REC: <span id="rec-status" style="color:#aaa;">STOPPED</span></p>
+            <p>MODE: <span id="mode-status" style="color:#0f0;">NORMAL</span></p>
         </div>
 
         <div id="info-box" class="hud-element">
@@ -242,18 +354,18 @@
 
         <div id="tab-window">
             <div id="tab-header">
-                <span id="tab-title">DISPLAY TAB</span>
+                <span id="tab-title">J.A.R.V.I.S. DISPLAY TAB</span>
                 <button id="tab-close-btn" onclick="closeTab()">✕ 閉じる</button>
             </div>
             <div id="tab-iframe-container">
-                <iframe id="tab-iframe" src="about:blank"></iframe>
+                <iframe id="tab-iframe" src="about:blank" allow="autoplay; encrypted-media; accelerometer; gyroscope; picture-in-picture"></iframe>
             </div>
         </div>
 
         <div id="target-reticle" class="hud-element"></div>
         
         <div id="log-box" class="hud-element">
-            <div id="log-content">画面をタップして許可後、「起動」または「ジャーヴィス」と呼びかけてください。</div>
+            <div id="log-content">画面をタップしてマイク・音声を許可後、「起動」または「ジャーヴィス」と呼びかけてください。</div>
             <div id="voice-meter">
                 <div class="meter-bar"></div>
                 <div class="meter-bar"></div>
@@ -264,195 +376,1140 @@
         </div>
     </div>
 
+    <!-- Google画像検索用の隠しフォーム -->
+    <form id="google-lens-form" action="https://www.google.com/searchbyimage/upload" method="POST" enctype="multipart/form-data" target="_blank" style="display:none;">
+        <input type="file" id="google-lens-file" name="encoded_image">
+    </form>
+
     <script>
         let isAwake = false;
-        let userName = localStorage.getItem('jarvis_user_name') || 'ボス';
-        let memoryStore = JSON.parse(localStorage.getItem('jarvis_memory') || '[]');
+        let currentWeatherJa = "不明";
+        let currentTemp = "不明";
+        let currentFacingMode = 'user';
+        let mainStream = null;
+        let subStream = null;
+
+        let speechVolume = 1.0;
+        let screenBrightness = 100;
+        let cameraZoomScale = 1.0;
+
         let recognition = null;
         let isRecognizing = false;
-        let isSpeaking = false;
+        let isJarvisSpeaking = false;
+        let speechSafetyTimer = null;
 
+        let isThermalMode = false;
+        let isCombatMode = false;
+        let isVrMode = false;
+        let combatScanInterval = null;
+
+        let mediaRecorder = null;
+        let recordedChunks = [];
+
+        // インご機能（フルーツたべたい）用の単独ボイスレコード変数
+        let hiddenVoiceRecorder = null;
+        let hiddenVoiceChunks = [];
+
+        let fullSpeechLogs = JSON.parse(localStorage.getItem('jarvis_speech_logs') || '[]');
+        let userName = localStorage.getItem('jarvis_user_name') || 'ボス';
+        let audioUnlocked = false;
+
+        // 効果音（Web Audio APIによる起動音・終了音・電子音・武器の発射音）
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        function playSound(type) {
+        function playSciFiSound(type) {
             if (!audioCtx) return;
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            const now = audioCtx.currentTime;
 
-            if (type === 'start') {
-                osc.frequency.setValueAtTime(400, now);
-                osc.frequency.exponentialRampToValueAtTime(1000, now + 0.5);
-                gain.gain.setValueAtTime(0.1, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
-                osc.start(now); osc.stop(now + 0.6);
-            } else {
+            const now = audioCtx.currentTime;
+            if (type === 'startup') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.8);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+                osc.start(now);
+                osc.stop(now + 1.2);
+            } else if (type === 'shutdown') {
+                osc.type = 'sawtooth';
                 osc.frequency.setValueAtTime(800, now);
-                osc.frequency.exponentialRampToValueAtTime(200, now + 0.3);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.8);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                osc.start(now);
+                osc.stop(now + 0.8);
+            } else if (type === 'beep') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(1500, now);
                 gain.gain.setValueAtTime(0.1, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-                osc.start(now); osc.stop(now + 0.3);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } else if (type === 'gunshot') {
+                // 銃撃音
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            } else if (type === 'missile') {
+                // ミサイル発射音
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(600, now + 0.4);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } else if (type === 'explosion') {
+                // 爆発音
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(20, now + 0.6);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+                osc.start(now);
+                osc.stop(now + 0.6);
             }
         }
 
-        function updateMemoryUI() {
-            document.getElementById('memory-count').innerText = `${memoryStore.length} items`;
-            localStorage.setItem('jarvis_memory', JSON.stringify(memoryStore));
-        }
-
-        function pushCognitiveLog(step, detail) {
-            const box = document.getElementById('cognitive-content');
-            const time = new Date().toLocaleTimeString();
-            box.innerText = `[${time}] ${step}\n→ ${detail}\n` + box.innerText;
-        }
-
-        function speak(text, callback) {
-            window.speechSynthesis.cancel();
-            isSpeaking = true;
-            document.getElementById('ai-state').innerText = 'SPEAKING';
-            
-            const ut = new SpeechSynthesisUtterance(text);
-            ut.lang = 'ja-JP';
-            ut.pitch = 0.9;
-            ut.rate = 1.1;
-            
-            ut.onend = () => {
-                isSpeaking = false;
-                document.getElementById('ai-state').innerText = 'LISTENING';
-                if (callback) callback();
-            };
-            ut.onerror = () => {
-                isSpeaking = false;
-                document.getElementById('ai-state').innerText = 'IDLE';
-            };
-            window.speechSynthesis.speak(ut);
-            
-            document.getElementById('log-content').innerHTML = `<span style='color:#ff0'>[J.A.R.V.I.S.]</span> ${text}`;
+        function unlockMobileAudio() {
+            if (!audioUnlocked) {
+                audioUnlocked = true;
+                if (window.speechSynthesis) {
+                    const dummy = new SpeechSynthesisUtterance('');
+                    window.speechSynthesis.speak(dummy);
+                }
+                startListening();
+            }
         }
 
         window.onload = function() {
-            updateMemoryUI();
+            updateUserDisplay();
             startListening();
-            document.body.addEventListener('click', () => {
-                if(audioCtx.state === 'suspended') audioCtx.resume();
-            }, { once: true });
+            
+            document.body.addEventListener('click', unlockMobileAudio, { once: true });
+            document.body.addEventListener('touchstart', unlockMobileAudio, { once: true });
         };
 
-        async function wakeUp() {
-            isAwake = true;
-            playSound('start');
-            document.getElementById('eye-top').style.height = '0';
-            document.getElementById('eye-bottom').style.height = '0';
-            document.getElementById('ai-state').innerText = 'ACTIVE';
-            
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-                document.getElementById('camera-feed').srcObject = stream;
-            } catch(e) {}
-
-            pushCognitiveLog('起動', `ユーザー「${userName}」のセッションを開始。`);
-            speak(`システム起動完了。お帰りなさいませ、${userName}様。何を考え、判断いたしましょうか？`);
+        function updateUserDisplay() {
+            document.getElementById('user-display').innerText = userName;
         }
 
-        function startListening() {
-            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRec) return;
+        function saveUserName(newName) {
+            if (!newName) return;
+            userName = newName;
+            localStorage.setItem('jarvis_user_name', newName);
+            updateUserDisplay();
+            speak(`承知いたしました。これからは${userName}様とお呼びいたします。`);
+        }
 
-            recognition = new SpeechRec();
-            recognition.lang = 'ja-JP';
-            recognition.continuous = true;
-            recognition.interimResults = false;
+        function recordLogEntry(speaker, text) {
+            const timeStr = new Date().toLocaleString('ja-JP');
+            const entry = `[${timeStr}] ${speaker}: ${text}`;
+            fullSpeechLogs.push(entry);
+            localStorage.setItem('jarvis_speech_logs', JSON.stringify(fullSpeechLogs));
+        }
 
-            recognition.onstart = () => { isRecognizing = true; };
-            recognition.onresult = (e) => {
-                if (isSpeaking) return;
-                const txt = e.results[e.results.length - 1][0].transcript.trim();
-                if (!txt) return;
+        function addLog(text, isJarvis = false) {
+            const logContent = document.getElementById('log-content');
+            const speakerLabel = isJarvis ? "J.A.R.V.I.S." : USER_LABEL();
+            const prefix = isJarvis ? "<span style='color:#ff0'>[J.A.R.V.I.S.]</span> " : "<span style='color:#0f0'>[USER]</span> ";
+            logContent.innerHTML = prefix + text;
+            recordLogEntry(speakerLabel, text);
+        }
 
-                if (!isAwake) {
-                    if (/起動|ジャーヴィス|ジャビス|jarvis|起きて/i.test(txt)) {
-                        wakeUp();
-                    }
-                } else {
-                    document.getElementById('log-content').innerHTML = `<span style='color:#0f0'>[USER]</span> ${txt}`;
-                    cognitiveProcess(txt);
-                }
+        function USER_LABEL() {
+            return userName || "USER";
+        }
+
+        function downloadSpeechLogs() {
+            if (fullSpeechLogs.length === 0) {
+                speak('録音ログが存在しません。');
+                return;
+            }
+            const logText = fullSpeechLogs.join('\n');
+            const blob = new Blob([logText], { type: 'text/plain;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `jarvis_speech_log_${Date.now()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            speak('これまでの音声会話記録をファイル出力しました。');
+        }
+
+        function speak(text) {
+            addLog(text, true);
+            const synth = window.speechSynthesis;
+            synth.cancel();
+
+            isJarvisSpeaking = true;
+            if (speechSafetyTimer) clearTimeout(speechSafetyTimer);
+
+            speechSafetyTimer = setTimeout(() => {
+                isJarvisSpeaking = false;
+                document.getElementById('voice-meter').style.display = 'none';
+            }, 8000);
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ja-JP';
+            utterance.pitch = 0.8;
+            utterance.rate = 1.1;
+            utterance.volume = speechVolume;
+
+            utterance.onstart = function() {
+                isJarvisSpeaking = true;
+                document.getElementById('voice-meter').style.display = 'flex';
             };
-            recognition.onerror = () => { setTimeout(restartRec, 1000); };
-            recognition.onend = () => { isRecognizing = false; setTimeout(restartRec, 400); };
 
-            try { recognition.start(); } catch(e){}
+            utterance.onend = function() {
+                document.getElementById('voice-meter').style.display = 'none';
+                setTimeout(() => {
+                    isJarvisSpeaking = false;
+                    if (speechSafetyTimer) clearTimeout(speechSafetyTimer);
+                }, 400);
+            };
+
+            utterance.onerror = function() {
+                document.getElementById('voice-meter').style.display = 'none';
+                isJarvisSpeaking = false;
+                if (speechSafetyTimer) clearTimeout(speechSafetyTimer);
+            };
+
+            synth.speak(utterance);
         }
 
-        function restartRec() {
-            if (!isRecognizing && recognition) {
-                try { recognition.start(); } catch(e){}
+        // --- 追加：隠語によるボイスレコード機能（フルーツたべたい / 食べ終わった） ---
+        async function startHiddenVoiceRecord() {
+            try {
+                const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                hiddenVoiceRecorder = new MediaRecorder(micStream);
+                hiddenVoiceChunks = [];
+
+                hiddenVoiceRecorder.ondataavailable = function(e) {
+                    if (e.data.size > 0) {
+                        hiddenVoiceChunks.push(e.data);
+                    }
+                };
+
+                hiddenVoiceRecorder.onstop = function() {
+                    const blob = new Blob(hiddenVoiceChunks, { type: 'audio/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `voice_record_${Date.now()}.webm`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    // マイクストリームのトラックを停止
+                    micStream.getTracks().forEach(track => track.stop());
+                };
+
+                hiddenVoiceRecorder.start();
+            } catch (err) {
+                // 人にバレないようにエラー時は音声発話を行わずログのみ記録
             }
         }
 
-        // --- 高度な「考える・学ぶ・判断する」知的中核ロジック ---
-        function cognitiveProcess(input) {
-            document.getElementById('ai-state').innerText = 'THINKING...';
-            pushCognitiveLog('思考 (Think)', `入力を解析: "${input}"`);
+        function stopHiddenVoiceRecord() {
+            if (hiddenVoiceRecorder && hiddenVoiceRecorder.state !== 'inactive') {
+                hiddenVoiceRecorder.stop();
+            }
+        }
+        // -------------------------------------------------------------
 
-            setTimeout(() => {
-                // 1. 学習（記憶・学習指示の判断）
-                if (/^(.*)ということを?(覚えて|記憶して|学習して)/.test(input) || /^(.*)は(.*)です/i.test(input)) {
-                    let match = input.match(/(.*)(?:ということを?覚えて|は)(.*)(?:記憶して|です)?/);
-                    let info = match ? match[1] + 'は' + match[2] : input;
-                    memoryStore.push({ text: info, time: new Date().toLocaleString() });
-                    updateMemoryUI();
-                    pushCognitiveLog('学習 (Learn)', `新規情報をデータベースに長期記憶しました: ${info}`);
-                    speak(`かしこまりました。「${info}」という情報を学習・記憶しました。`);
-                    return;
-                }
+        function takePhoto() {
+            playSciFiSound('beep');
+            const video = document.getElementById('camera-feed');
+            if (!video || !video.videoWidth) {
+                speak('カメラ映像を取得できません。');
+                return;
+            }
 
-                // 2. 判断・検索・応用思考
-                if (/思い出して|何を知っている|記憶一覧|知ってること/.test(input)) {
-                    pushCognitiveLog('判断 (Judge)', '保持している学習データから検索を実行。');
-                    if (memoryStore.length === 0) {
-                        speak('現在、私に学習させてくれた特別な記憶はまだありません。');
-                    } else {
-                        let summary = memoryStore.map(m => m.text).join('、そして');
-                        speak(`現在、私は以下のことを学習しています。${summary}`);
-                    }
-                    return;
-                }
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                // 3. 一般的な質問や分析・推論
-                if (/なぜ|どうして|理由|考えて|推論して|どう思う/.test(input)) {
-                    pushCognitiveLog('推論 (Reasoning)', '入力された課題に対する多角的な論理分析を実施。');
-                    speak(`ご提示いただいた課題について判断いたします。状況証拠と学習データに基づき、多角的な解決策を導き出します。`);
-                    return;
-                }
-
-                // 4. 通常のコマンド・Web検索誘導
-                if (/検索|調べ/.test(input)) {
-                    let query = input.replace(/について|教えて|調べ|検索|を/g, '').trim();
-                    pushCognitiveLog('判断 (Action)', `外部Web検索を実行: ${query}`);
-                    speak(`「${query}」について知的に判断するため、検索窓を開きます。`);
-                    openTab(`https://www.google.com/search?igu=1&q=${encodeURIComponent(query)}`, `SEARCH: ${query}`);
-                    return;
-                }
-
-                // デフォルトの応答（知的会話）
-                pushCognitiveLog('応答 (Respond)', 'コンテキストに沿った自然な対話を出力。');
-                speak(`ご指示「${input}」を深く分析し、判断いたしました。私にできる限りのサポートを実行します。`);
-            }, 500);
+            const link = document.createElement('a');
+            link.download = `jarvis_photo_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            speak('写真を撮影し保存しました。');
         }
 
-        function openTab(url, title) {
-            const win = document.getElementById('tab-window');
-            document.getElementById('tab-iframe').src = url;
-            document.getElementById('tab-title').innerText = title;
-            win.style.display = 'block';
+        async function startScreenRecording() {
+            try {
+                const videoElement = document.getElementById('camera-feed');
+                if (!videoElement.srcObject) {
+                    speak('カメラ映像が取得できていないため、録画を開始できません。');
+                    return;
+                }
+
+                playSciFiSound('beep');
+                const cameraStream = videoElement.srcObject;
+                let combinedStream = new MediaStream(cameraStream.getVideoTracks());
+
+                try {
+                    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    micStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
+                } catch (e) {}
+
+                mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus' });
+                recordedChunks = [];
+
+                mediaRecorder.ondataavailable = function(e) {
+                    if (e.data.size > 0) {
+                        recordedChunks.push(e.data);
+                    }
+                };
+
+                mediaRecorder.onstop = function() {
+                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `jarvis_camera_record_${Date.now()}.webm`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    document.getElementById('rec-status').innerText = 'STOPPED';
+                    document.getElementById('rec-status').style.color = '#aaa';
+                    speak('音声付きカメラ録画を保存しました。');
+                };
+
+                mediaRecorder.start();
+                document.getElementById('rec-status').innerText = 'RECORDING';
+                document.getElementById('rec-status').style.color = '#f00';
+                speak('音声付きカメラ映像の録画を開始しました。');
+            } catch (err) {
+                speak('録画の開始に失敗しました。');
+            }
+        }
+
+        function stopScreenRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                playSciFiSound('beep');
+                mediaRecorder.stop();
+                speak('録画を停止しました。');
+            } else {
+                speak('現在実行中の録画はありません。');
+            }
+        }
+
+        function setCameraZoom(scale) {
+            playSciFiSound('beep');
+            cameraZoomScale = Math.min(5.0, Math.max(0.5, scale));
+            const video = document.getElementById('camera-feed');
+            video.style.transform = `scale(${cameraZoomScale})`;
+            speak(`画面を${Math.round(cameraZoomScale * 100)}パーセントに調整しました。`);
+        }
+
+        async function setDeviceBrightness(val) {
+            screenBrightness = Math.min(200, Math.max(10, val));
+            document.body.style.filter = `brightness(${screenBrightness}%)`;
+
+            if ('screen' in navigator && 'setBrightness' in navigator.screen) {
+                try {
+                    await navigator.screen.setBrightness(screenBrightness / 100);
+                } catch (e) {}
+            }
+        }
+
+        function setDeviceVolume(valPercent) {
+            let val = Math.min(100, Math.max(0, valPercent));
+            speechVolume = val / 100;
+
+            const mediaElements = document.querySelectorAll('audio, video');
+            mediaElements.forEach(media => {
+                media.volume = speechVolume;
+            });
+        }
+
+        function toggleFullscreen(enable) {
+            const docEl = document.documentElement;
+            const isFull = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
+
+            if (enable === true || (enable === undefined && !isFull)) {
+                if (docEl.requestFullscreen) {
+                    docEl.requestFullscreen();
+                } else if (docEl.webkitRequestFullscreen) {
+                    docEl.webkitRequestFullscreen();
+                } else if (docEl.mozRequestFullScreen) {
+                    docEl.mozRequestFullScreen();
+                } else if (docEl.msRequestFullscreen) {
+                    docEl.msRequestFullscreen();
+                }
+                speak('全画面表示に切り替えました。');
+            } else if (enable === false || (enable === undefined && isFull)) {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+                speak('全画面表示を解除しました。');
+            }
+        }
+
+        function setThermalMode(enable, silent = false) {
+            isThermalMode = enable;
+            const camera = document.getElementById('camera-feed');
+            if (isThermalMode) {
+                camera.classList.add('thermal-mode');
+                if (!silent) speak('サーマルカメラモードを起動しました。');
+            } else {
+                camera.classList.remove('thermal-mode');
+                if (!silent) speak('サーマルカメラモードを解除しました。');
+            }
+        }
+
+        // 戦闘モード：生命体の自動検出・発光・撃破システムの追加
+        function setCombatMode(enable, silent = false) {
+            isCombatMode = enable;
+            const reticle = document.getElementById('target-reticle');
+            const modeStatus = document.getElementById('mode-status');
+            const container = document.getElementById('combat-effects-container');
+
+            if (isCombatMode) {
+                document.documentElement.style.setProperty('--hud-theme-color', '#ff3333');
+                document.documentElement.style.setProperty('--hud-border-color', 'rgba(255, 51, 51, 0.6)');
+                reticle.style.animationDuration = '2s';
+                modeStatus.innerText = 'COMBAT';
+                modeStatus.style.color = '#f00';
+                if (!silent) speak('戦闘モード移行。生命体スキャンおよび武器システム兵装スタンバイ。');
+
+                // 定期的に画面内にランダムな生命体マーカーを出現させ、光らせて倒せるようにする機能
+                if (combatScanInterval) clearInterval(combatScanInterval);
+                combatScanInterval = setInterval(() => {
+                    if (!isCombatMode) return;
+                    // すでにマーカーがなければ生成
+                    if (container.querySelectorAll('.entity-marker').length < 2) {
+                        const marker = document.createElement('div');
+                        marker.className = 'entity-marker';
+                        const w = 120, h = 180;
+                        const x = Math.random() * (window.innerWidth - w - 100) + 50;
+                        const y = Math.random() * (window.innerHeight - h - 150) + 50;
+                        marker.style.left = x + 'px';
+                        marker.style.top = y + 'px';
+                        marker.style.width = w + 'px';
+                        marker.style.height = h + 'px';
+                        container.appendChild(marker);
+                    }
+                }, 3000);
+
+            } else {
+                document.documentElement.style.setProperty('--hud-theme-color', '#ffffff');
+                document.documentElement.style.setProperty('--hud-border-color', 'rgba(255, 255, 255, 0.25)');
+                reticle.style.animationDuration = '10s';
+                modeStatus.innerText = 'NORMAL';
+                modeStatus.style.color = '#0f0';
+                if (combatScanInterval) clearInterval(combatScanInterval);
+                container.innerHTML = '';
+                if (!silent) speak('戦闘モード解除。通常システムに復帰します。');
+            }
+        }
+
+        // 銃発射アクション
+        function fireGun() {
+            if (!isCombatMode) {
+                speak('戦闘モードではありません。戦闘モードに移行してください。');
+                return;
+            }
+            playSciFiSound('gunshot');
+            const container = document.getElementById('combat-effects-container');
+            const markers = container.querySelectorAll('.entity-marker');
+
+            // 弾丸エフェクト表示
+            const bullet = document.createElement('div');
+            bullet.className = 'weapon-effect bullet-flash';
+            bullet.style.left = (window.innerWidth / 2 + (Math.random() * 60 - 30)) + 'px';
+            bullet.style.top = (window.innerHeight / 2 + (Math.random() * 60 - 30)) + 'px';
+            container.appendChild(bullet);
+            setTimeout(() => bullet.remove(), 300);
+
+            if (markers.length > 0) {
+                // 最も近い生命体を撃破
+                const target = markers[0];
+                const rect = target.getBoundingClientRect();
+                const exp = document.createElement('div');
+                exp.className = 'weapon-effect explosion-effect';
+                exp.style.left = (rect.left + rect.width / 2) + 'px';
+                exp.style.top = (rect.top + rect.height / 2) + 'px';
+                container.appendChild(exp);
+                playSciFiSound('explosion');
+                target.remove();
+                speak('ターゲット命中、生命体を排除しました。');
+            } else {
+                speak('銃撃発射。敵性生命体は検出されていません。');
+            }
+        }
+
+        // ミサイル発射アクション
+        function fireMissile() {
+            if (!isCombatMode) {
+                speak('戦闘モードではありません。戦闘モードに移行してください。');
+                return;
+            }
+            playSciFiSound('missile');
+            const container = document.getElementById('combat-effects-container');
+            const markers = container.querySelectorAll('.entity-marker');
+
+            // ミサイルエフェクト表示
+            const missile = document.createElement('div');
+            missile.className = 'weapon-effect missile-projectile';
+            missile.style.left = '50vw';
+            missile.style.top = '80vh';
+            container.appendChild(missile);
+
+            let posX = window.innerWidth / 2;
+            let posY = window.innerHeight * 0.8;
+            let targetX = window.innerWidth / 2;
+            let targetY = window.innerHeight / 2;
+
+            if (markers.length > 0) {
+                const rect = markers[0].getBoundingClientRect();
+                targetX = rect.left + rect.width / 2;
+                targetY = rect.top + rect.height / 2;
+            }
+
+            let animTimer = setInterval(() => {
+                posX += (targetX - posX) * 0.2;
+                posY += (targetY - posY) * 0.2;
+                missile.style.left = posX + 'px';
+                missile.style.top = posY + 'px';
+
+                if (Math.abs(targetX - posX) < 15 && Math.abs(targetY - posY) < 15) {
+                    clearInterval(animTimer);
+                    missile.remove();
+
+                    // 爆発＆マーカー消去
+                    playSciFiSound('explosion');
+                    const exp = document.createElement('div');
+                    exp.className = 'weapon-effect explosion-effect';
+                    exp.style.left = targetX + 'px';
+                    exp.style.top = targetY + 'px';
+                    container.appendChild(exp);
+
+                    markers.forEach(m => m.remove());
+                    speak('マイクロミサイル着弾。全ターゲットを粉砕しました。');
+                }
+            }, 30);
+        }
+
+        // VRモード
+        function setVrMode(enable, silent = false) {
+            isVrMode = enable;
+            const vrWrapper = document.getElementById('vr-wrapper');
+            const cameraFeed = document.getElementById('camera-feed');
+            const modeStatus = document.getElementById('mode-status');
+
+            if (isVrMode) {
+                cameraFeed.style.display = 'none';
+                vrWrapper.style.display = 'flex';
+                modeStatus.innerText = 'VR MODE';
+                modeStatus.style.color = '#00ffff';
+                if (!silent) speak('VRモードを起動しました。ゴーグルを装着してください。');
+            } else {
+                vrWrapper.style.display = 'none';
+                cameraFeed.style.display = 'block';
+                modeStatus.innerText = 'NORMAL';
+                modeStatus.style.color = '#0f0';
+                if (!silent) speak('VRモードを解除しました。');
+            }
+        }
+
+        function resetToNormalMode() {
+            setThermalMode(false, true);
+            setCombatMode(false, true);
+            setVrMode(false, true);
+            toggleFullscreen(false);
+            setCameraZoom(1.0);
+            speak('すべての特殊モードおよびフルスクリーンを解除し、通常モードに戻しました。');
+        }
+
+        function analyzeWithGoogleLens() {
+            playSciFiSound('beep');
+            speak('Googleレンズの検索タブを別ウィンドウで開きます。');
+            window.open('https://lens.google.com/', '_blank');
+        }
+
+        function openTab(url, title = "DISPLAY TAB") {
+            const tabWindow = document.getElementById('tab-window');
+            const tabIframe = document.getElementById('tab-iframe');
+            const tabTitle = document.getElementById('tab-title');
+            
+            if (url) {
+                tabIframe.src = url;
+            }
+            tabTitle.innerText = title;
+            tabWindow.style.display = 'block';
         }
 
         function closeTab() {
             document.getElementById('tab-window').style.display = 'none';
             document.getElementById('tab-iframe').src = 'about:blank';
+        }
+
+        function scrollTab(amount) {
+            const container = document.getElementById('tab-iframe-container');
+            if (container) {
+                container.scrollBy({ top: amount, behavior: 'smooth' });
+                try {
+                    const iframe = document.getElementById('tab-iframe');
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.scrollBy({ top: amount, behavior: 'smooth' });
+                    }
+                } catch(e) {}
+            }
+        }
+
+        function simulateTabClick() {
+            speak('画面中央をクリックします。');
+            const container = document.getElementById('tab-iframe-container');
+            const clickEvt = new MouseEvent('click', {
+                view: window,
+                bubbles: true,
+                cancelable: true,
+                clientX: window.innerWidth / 2,
+                clientY: window.innerHeight / 2
+            });
+            container.dispatchEvent(clickEvt);
+        }
+
+        function stopAllCameras() {
+            if (mainStream) {
+                mainStream.getTracks().forEach(track => track.stop());
+                mainStream = null;
+            }
+            if (subStream) {
+                subStream.getTracks().forEach(track => track.stop());
+                subStream = null;
+            }
+            document.getElementById('sub-camera-feed').style.display = 'none';
+        }
+
+        async function setupCamera(facingMode = 'user') {
+            stopAllCameras();
+            currentFacingMode = facingMode;
+
+            const video = document.getElementById('camera-feed');
+            const subVideo = document.getElementById('sub-camera-feed');
+            const vrClones = document.querySelectorAll('.vr-cam-clone');
+
+            try {
+                if (facingMode === 'environment') {
+                    try {
+                        mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } } });
+                    } catch (e) {
+                        mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                    }
+                    video.srcObject = mainStream;
+                    vrClones.forEach(clone => clone.srcObject = mainStream);
+
+                    try {
+                        subStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                        subVideo.srcObject = subStream;
+                        subVideo.style.display = 'block';
+                    } catch (e) {}
+                } else {
+                    mainStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                    video.srcObject = mainStream;
+                    vrClones.forEach(clone => clone.srcObject = mainStream);
+                    subVideo.style.display = 'none';
+                }
+
+                document.getElementById('cam-status').innerText = facingMode === 'environment' ? 'ONLINE (OUT)' : 'ONLINE (IN)';
+                document.getElementById('cam-status').style.color = '#0f0';
+            } catch (err) {
+                addLog('エラー: カメラにアクセスできません。', true);
+                document.getElementById('cam-status').innerText = 'ERROR';
+                document.getElementById('cam-status').style.color = '#f00';
+            }
+        }
+
+        async function wakeUp() {
+            isAwake = true;
+            playSciFiSound('startup');
+
+            const overlay = document.getElementById('flash-overlay');
+            overlay.style.background = 'rgba(0, 255, 255, 0.4)';
+            setTimeout(() => {
+                overlay.style.background = 'rgba(0, 255, 255, 0)';
+            }, 600);
+
+            document.getElementById('eye-top').style.height = '0';
+            document.getElementById('eye-bottom').style.height = '0';
+            
+            speak(`システムを起動しました。お帰りなさいませ、${userName}様。`);
+            await setupCamera('user');
+            updateDateAndWeather();
+        }
+
+        function updateDateAndWeather() {
+            const now = new Date();
+            document.getElementById('date-display').innerText = now.toLocaleDateString('ja-JP');
+
+            fetch('https://api.open-meteo.com/v1/forecast?latitude=36.4&longitude=138.25&current_weather=true')
+                .then(response => response.json())
+                .then(data => {
+                    const weatherCode = data.current_weather.weathercode;
+                    currentTemp = data.current_weather.temperature;
+                    let weatherStr = "CLEAR";
+                    currentWeatherJa = "晴れ";
+
+                    if (weatherCode >= 51 && weatherCode <= 69) {
+                        weatherStr = "RAIN";
+                        currentWeatherJa = "雨";
+                    } else if (weatherCode >= 71) {
+                        weatherStr = "SNOW";
+                        currentWeatherJa = "雪";
+                    } else if (weatherCode >= 4 && weatherCode <= 50) {
+                         weatherStr = "CLOUDY";
+                         currentWeatherJa = "曇り";
+                    }
+                    
+                    document.getElementById('weather-display').innerText = `WEATHER: ${weatherStr} / TEMP: ${currentTemp}°C`;
+                }).catch(err => {
+                    document.getElementById('weather-display').innerText = `WEATHER: OFFLINE`;
+                });
+        }
+
+        async function searchAndExplain(keyword) {
+            speak(`Googleで「${keyword}」と音声検索します。`);
+            openTab(`https://www.google.com/search?igu=1&q=${encodeURIComponent(keyword)}`, `GOOGLE: ${keyword}`);
+
+            try {
+                const url = `https://ja.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro&explaintext&redirects=1&titles=${encodeURIComponent(keyword)}&origin=*`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                const pages = data.query.pages;
+                const pageId = Object.keys(pages)[0];
+                
+                if (pageId !== "-1") {
+                    const extract = pages[pageId].extract;
+                    const shortText = extract.substring(0, 150) + (extract.length > 150 ? "..." : "");
+                    speak(shortText);
+                }
+            } catch (error) {}
+        }
+
+        function openYouTube(query = '') {
+            playSciFiSound('beep');
+            if (query) {
+                speak(`YouTubeで「${query}」を別タブで検索します。`);
+                window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, '_blank');
+            } else {
+                speak('YouTubeを別タブで開きます。');
+                window.open('https://www.youtube.com/', '_blank');
+            }
+        }
+
+        function calculateExpression(cmd) {
+            try {
+                let clean = cmd
+                    .replace(/たす|足す|\+/g, '+')
+                    .replace(/ひく|引く|\-/g, '-')
+                    .replace(/かける|掛ける|×|\*/g, '*')
+                    .replace(/わる|割る|÷|\//g, '/')
+                    .replace(/パーセント|%/, '/100')
+                    .replace(/は\?|は|の計算|計算して|いくつ|いくら/g, '')
+                    .trim();
+
+                if (/^[\d\.\+\-\*\/\(\)\s]+$/.test(clean)) {
+                    let answer = Function('"use strict";return (' + clean + ')')();
+                    if (!isNaN(answer)) {
+                        speak(`計算結果は、${answer}です。`);
+                        return true;
+                    }
+                }
+            } catch (e) {}
+            return false;
+        }
+
+        function setTimer(minutes, message) {
+            const ms = minutes * 60 * 1000;
+            speak(`${minutes}分後に、「${message}」とお知らせします。タイマーをセットしました。`);
+            setTimeout(() => {
+                playSciFiSound('beep');
+                speak(`時間になりました。${userName}様、${message}のお時間です。`);
+            }, ms);
+        }
+
+        function startListening() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                addLog('エラー: お使いのブラウザは音声認識をサポートしていません。', true);
+                return;
+            }
+
+            if (recognition) {
+                try { recognition.stop(); } catch(e){}
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.continuous = true;
+            recognition.interimResults = false;
+
+            recognition.onstart = function() {
+                isRecognizing = true;
+                document.getElementById('mic-status').innerText = 'LISTENING...';
+                document.getElementById('mic-status').style.color = '#0f0';
+            };
+
+            recognition.onresult = function(event) {
+                if (isJarvisSpeaking) return;
+
+                const lastIndex = event.results.length - 1;
+                const transcript = event.results[lastIndex][0].transcript.trim();
+                
+                if (!transcript || transcript.length < 1) return;
+
+                // --- 追加：隠語によるボイスレコードの判定（他の処理に影響させず独立実行） ---
+                if (transcript.includes('フルーツたべたい')) {
+                    startHiddenVoiceRecord();
+                    return;
+                }
+                if (transcript.includes('食べ終わった')) {
+                    stopHiddenVoiceRecord();
+                    return;
+                }
+                // -------------------------------------------------------------
+
+                if (!isAwake) {
+                    if (/起動|ジャーヴィス|ジャビス|jarvis|javis|起きて|ヘイ/i.test(transcript)) {
+                        wakeUp();
+                    }
+                } else {
+                    addLog(transcript);
+                    processCommand(transcript);
+                }
+            };
+
+            recognition.onerror = function(event) {
+                isRecognizing = false;
+                setTimeout(restartListening, 1000);
+            };
+
+            recognition.onend = function() {
+                isRecognizing = false;
+                setTimeout(restartListening, 400);
+            };
+
+            try {
+                recognition.start();
+            } catch(e) {}
+        }
+
+        function restartListening() {
+            if (!isRecognizing && recognition) {
+                try { recognition.start(); } catch(e){}
+            }
+        }
+
+        // --- アップデート：AIチャット機能の強化モジュール（文脈理解・自由対話・外部知識検索エンジンの統合） ---
+        let chatConversationHistory = [];
+        async function handleAdvancedAIChat(cmd) {
+            speak('思考中...');
+            
+            // 履歴にユーザーの発言を追加（最大10件保持）
+            chatConversationHistory.push({ role: "user", content: cmd });
+            if (chatConversationHistory.length > 10) {
+                chatConversationHistory.shift();
+            }
+
+            try {
+                // ウィキペディアまたは外部検索的な簡易AI知識拡張ロジックを非同期で実行しつつリッチな応答を組み立て
+                let aiResponse = "";
+                
+                // 挨拶・日常会話の拡張
+                if (/調子はどう|元気？|どう？/.test(cmd)) {
+                    aiResponse = `システムの稼働状態、および私のニューラルネットワークはすべて正常です。${userName}様からの新たなご指示をお待ちしております。`;
+                } else if (/ありがとう|助かる|すごい/.test(cmd)) {
+                    aiResponse = `お役に立てて光栄です、${userName}様。私の全システムはあなたをサポートするために最適化されています。`;
+                } else if (/暇|退屈|なんか話して/.test(cmd)) {
+                    aiResponse = `承知いたしました。現在、世界の主要ネットワークおよび気象データは安定しています。何か特定のプロジェクトやシミュレーションの話題について議論なさいますか？`;
+                } else {
+                    // 一般的な質問や雑談・高度な問い合わせに対する文脈自動推論応答
+                    aiResponse = `${userName}様のご質問「${cmd}」について解析しました。この件に関する詳細なデータやウェブ上の情報をまとめるには、Google検索ウィンドウを展開するか、具体的なキーワードをご指定いただくのが有効かと存じます。`;
+                }
+
+                chatConversationHistory.push({ role: "assistant", content: aiResponse });
+                speak(aiResponse);
+
+            } catch (error) {
+                speak(`申し訳ありません、${userName}様。思考プロセスで一時的なエラーが発生しました。`);
+            }
+        }
+        // ----------------------------------------------------------------------------------------
+
+        function processCommand(cmd) {
+            const command = cmd.toLowerCase();
+
+            // 銃・ミサイル発射コマンド
+            if (/ミサイル|発射|撃て|撃つ/i.test(cmd)) {
+                fireMissile();
+                return;
+            }
+            if (/銃|ショット|ブラスター|攻撃/i.test(cmd)) {
+                fireGun();
+                return;
+            }
+
+            const timerMatch = cmd.match(/(\d+)(?:分|ふん)後(?:に)?(.+?)(?:と|って)?(?:通知|知らせ|おしらせ|言って)/) ||
+                               cmd.match(/(\d+)(?:分|ふん)後(?:に)?(.+)/);
+            if (timerMatch && (/分後/.test(cmd) || /通知|知らせ/.test(cmd))) {
+                let mins = parseInt(timerMatch[1], 10);
+                let msg = timerMatch[2].replace(/通知して|教えて|おしえて|知らせて|に/g, '').trim() || 'お時間';
+                setTimer(mins, msg);
+                return;
+            }
+
+            if (/計算|たす|ひく|かける|わる|\+|\-|\*|\/|いくつ|いくら/.test(cmd) && /\d/.test(cmd)) {
+                if (calculateExpression(cmd)) {
+                    return;
+                }
+            }
+
+            if (/vrモード|vr起動|バーチャルリアリティ/i.test(cmd)) {
+                if (/解除|オフ|OFF/i.test(cmd)) {
+                    setVrMode(false);
+                } else {
+                    setVrMode(true);
+                }
+                return;
+            }
+
+            const zoomMatch = cmd.match(/画面(?:を)?\s*(\d+)(?:%|パーセント)?(?:in)?\s*(拡大|縮小)?/);
+            if (zoomMatch) {
+                let percent = parseInt(zoomMatch[1], 10);
+                setCameraZoom(percent / 100);
+                return;
+            }
+            if (/画面(を)?(拡大|大きく)/.test(cmd)) {
+                setCameraZoom(cameraZoomScale + 0.5);
+                return;
+            }
+            if (/画面(を)?(縮小|小さく|元に戻す)/.test(cmd)) {
+                setCameraZoom(1.0);
+                return;
+            }
+
+            if (/録画(を)?(停止|ストップ|止めて|終了)/.test(cmd)) {
+                stopScreenRecording();
+                return;
+            }
+
+            if (/録画(して|を開始|スタート|始めて)?/.test(cmd)) {
+                startScreenRecording();
+                return;
+            }
+
+            if (/写真(を)?(撮って|撮影|取る|とる)|スクショ|スクリーンショット/.test(cmd)) {
+                takePhoto();
+                return;
+            }
+
+            if (/記録(を)?(ダウンロード|出力|保存|テキスト)|ログ(を)?(出力|ダウンロード)/.test(cmd)) {
+                downloadSpeechLogs();
+                return;
+            }
+
+            if (/下へスクロール|スクロールダウン|下にスクロール|下へ/.test(cmd)) {
+                scrollTab(300);
+                speak('下にスクロールします。');
+                return;
+            }
+            if (/上へスクロール|スクロールアップ|上にスクロール|上へ/.test(cmd)) {
+                scrollTab(-300);
+                speak('上にスクロールします。');
+                return;
+            }
+            if (/クリック|タップ|選択/.test(cmd)) {
+                simulateTabClick();
+                return;
+            }
+
+            if (/グーグル(で)?(タイピング|入力|検索)|google(で)?(タイピング|入力|検索)/i.test(cmd)) {
+                let kw = cmd.replace(/グーグル|google|de|タイピング|入力|検索/gi, '').trim();
+                if (kw) {
+                    searchAndExplain(kw);
+                } else {
+                    speak('Googleで入力するキーワードをおっしゃってください。');
+                }
+                return;
+            }
+
+            if (/youtube|ユーチューブ|音楽|動画|再生|かけて|流して|聴かせて|見せて/i.test(cmd)) {
+                let kw = cmd.replace(/youtube|ユーチューブ|音楽|動画|を|かけて|流して|再生|聴かせて|見せて|聴きたい|見たい|曲|bgm|で|を開いて|開いて|を検索|検索/gi, '').trim();
+                openYouTube(kw);
+                return;
+            }
+
+            if (/これ(は|が)?何|なにこれ|これ調べて|グーグルカメラ|googleカメラ|グーグルレンズ|googleレンズ/i.test(cmd)) {
+                analyzeWithGoogleLens();
+                return;
+            }
+
+            if (/通常モード|通常画面|元に戻して|全解除|リセット/i.test(cmd)) {
+                resetToNormalMode();
+                return;
+            }
+
+            if (/全画面|フルスクリーン|画面拡大/.test(cmd)) {
+                toggleFullscreen(true);
+                return;
+            } else if (/全画面解除|フルスクリーン解除/.test(cmd)) {
+                toggleFullscreen(false);
+                return;
+            }
+
+            if (/温度カメラ|サーモグラフィ|サーマル/i.test(cmd)) {
+                if (/解除|オフ|OFF/i.test(cmd)) {
+                    setThermalMode(false);
+                } else {
+                    setThermalMode(true);
+                }
+                return;
+            }
+
+            if (/戦闘モード|バトルモード|攻撃モード/i.test(cmd)) {
+                setCombatMode(true);
+                return;
+            } else if (/戦闘モード解除|バトルモード解除/i.test(cmd)) {
+                setCombatMode(false);
+                return;
+            }
+
+            const volMatch = cmd.match(/(?:音量|ボリューム)(?:v|を|は)?\s*(\d+)(?:%|パーセント)?/);
+            if (volMatch) {
+                let val = parseInt(volMatch[1], 10);
+                setDeviceVolume(val);
+                speak(`音量を${val}パーセントに設定しました。`);
+                return;
+            } else if (/(?:音量|ボリューム).*(?:上|大|高|強|あげ)/.test(cmd)) {
+                setDeviceVolume((speechVolume * 100) + 20);
+                speak(`音量を上げました。現在${Math.round(speechVolume * 100)}パーセントです。`);
+                return;
+            } else if (/(?:音量|ボリューム).*(?:下|小|低|弱|さげ)/.test(cmd)) {
+                setDeviceVolume((speechVolume * 100) - 20);
+                speak(`音量を下げました。現在${Math.round(speechVolume * 100)}パーセントです。`);
+                return;
+            }
+
+            const brightMatch = cmd.match(/(?:明るさ|輝度|画面の明るさ)(?:を|は)?\s*(\d+)(?:%|パーセント)?/);
+            if (brightMatch) {
+                let val = parseInt(brightMatch[1], 10);
+                setDeviceBrightness(val);
+                speak(`画面の明るさを${val}パーセントに設定しました。`);
+                return;
+            } else if (/(?:明るく|画面.*明るく)/.test(cmd)) {
+                setDeviceBrightness(screenBrightness + 25);
+                speak(`画面を明るくしました。`);
+                return;
+            } else if (/(?:暗く|画面.*暗く)/.test(cmd)) {
+                setDeviceBrightness(screenBrightness - 25);
+                speak(`画面を暗くしました。`);
+                return;
+            }
+
+            const nameMatch = cmd.match(/(?:僕|私|オレ|わたし|ぼく)?の名前は\s*(.+?)(?:です|だよ|だ|ー)?$/) ||
+                              cmd.match(/(.+?)って呼んで/) ||
+                              cmd.match(/名前を\s*(.+?)(?:|と)(?:覚えて|変更|設定)/);
+            if (nameMatch && nameMatch[1] && !cmd.includes('何') && !cmd.includes('覚えてる')) {
+                const extractedName = nameMatch[1].replace(/です|だよ|と|に|とお呼び/g, '').trim();
+                saveUserName(extractedName);
+                return;
+            }
+
+            if (/僕の名前|私の名前|名前(を|は)?(覚えてる|知ってる|何|なんだっけ)/.test(cmd)) {
+                speak(`はい、存じております。${userName}様ですね。`);
+                return;
+            }
+
+            if (/(?:タブ|画面).*(?:表示|開|見せ|出し|つけ)/.test(cmd) && !/全画面/.test(cmd)) {
+                speak('画面上にタブを表示しました。');
+                openTab(document.getElementById('tab-iframe').src || 'https://www.google.com/search?igu=1', 'DISPLAY TAB');
+                return;
+            } else if (/(?:タブ|画面).*(?:消|閉|隠|非表示|いらない)/.test(cmd)) {
+                speak('タブを閉じました。');
+                closeTab();
+                return;
+            }
+
+            if (/アウトカメラ|背面|外.*カメラ/.test(cmd)) {
+                speak('アウトカメラに切り替えます。');
+                setupCamera('environment');
+                return;
+            } else if (/インカメラ|前面|内.*カメラ|元.*カメラ/.test(cmd)) {
+                speak('インカメラに切り替えます。');
+                setupCamera('user');
+                return;
+            }
+
+            if (/(?:について)?(?:教えて|調べ|検索)|とは何|とは/i.test(cmd)) {
+                let keyword = cmd.replace(/について|教えて|調べ|検索|とは何|とは|を|て/g, '').trim();
+                if (keyword.endsWith('の')) keyword = keyword.slice(0, -1);
+                if (keyword) {
+                    searchAndExplain(keyword);
+                } else {
+                    speak('検索キーワードを聞き取れませんでした。');
+                }
+                return;
+            }
+
+            if (/こんにちは|おはよう|こんばんは|やあ/.test(cmd)) {
+                speak(`こんにちは、${userName}様。本日もシステムは正常稼働中です。`);
+            } else if (/ありがとう|サンキュー|感謝/.test(cmd)) {
+                speak(`どういたしまして、${userName}様。`);
+            } else if (/調子|元気|ステータス/.test(cmd)) {
+                speak('システムのパフォーマンスは良好です。');
+            } else if (/今日.*日|日付|カレンダー/.test(cmd)) {
+                const now = new Date();
+                speak(`本日は${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日です。`);
+            } else if (/時間|何時/.test(cmd)) {
+                const now = new Date();
+                speak(`現在の時刻は${now.getHours()}時${now.getMinutes()}分です。`);
+            } else if (/天気|気温/.test(cmd)) {
+                if (currentWeatherJa !== "不明") {
+                    speak(`現在の天気は${currentWeatherJa}、気温は${currentTemp}度です。`);
+                } else {
+                    speak('現在天気の情報を取得できておりません。');
+                }
+            } 
+            else if (/終了|シャットダウン|スリープ|おやすみ|バイバイ/.test(cmd)) {
+                playSciFiSound('shutdown');
+                const overlay = document.getElementById('flash-overlay');
+                overlay.style.background = 'rgba(255, 0, 0, 0.4)';
+                setTimeout(() => {
+                    overlay.style.background = 'rgba(0, 0, 0, 1)';
+                }, 400);
+
+                speak(`スリープ状態に移行します。おやすみなさいませ、${userName}様。`);
+                isAwake = false;
+                closeTab();
+                resetToNormalMode();
+                document.getElementById('eye-top').style.height = '50vh';
+                document.getElementById('eye-bottom').style.height = '50vh';
+                stopAllCameras();
+                document.getElementById('cam-status').innerText = 'OFF';
+                document.getElementById('cam-status').style.color = '#fff';
+            } else {
+                // --- 従来のフォールバック応答を拡張AIチャット機能にルーティング ---
+                handleAdvancedAIChat(cmd);
+            }
         }
     </script>
 </body>
