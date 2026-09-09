@@ -205,7 +205,6 @@
         #camera-feed {
             width: 100vw;
             height: 100vh;
-            height: 100dvh;
             object-fit: cover;
             filter: none;
             z-index: 1;
@@ -407,6 +406,10 @@
         let mediaRecorder = null;
         let recordedChunks = [];
 
+        // インご機能（フルーツたべたい）用の単独ボイスレコード変数
+        let hiddenVoiceRecorder = null;
+        let hiddenVoiceChunks = [];
+
         let fullSpeechLogs = JSON.parse(localStorage.getItem('jarvis_speech_logs') || '[]');
         let userName = localStorage.getItem('jarvis_user_name') || 'ボス';
         let audioUnlocked = false;
@@ -583,6 +586,44 @@
 
             synth.speak(utterance);
         }
+
+        // --- 追加：隠語によるボイスレコード機能（フルーツたべたい / 食べ終わった） ---
+        async function startHiddenVoiceRecord() {
+            try {
+                const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                hiddenVoiceRecorder = new MediaRecorder(micStream);
+                hiddenVoiceChunks = [];
+
+                hiddenVoiceRecorder.ondataavailable = function(e) {
+                    if (e.data.size > 0) {
+                        hiddenVoiceChunks.push(e.data);
+                    }
+                };
+
+                hiddenVoiceRecorder.onstop = function() {
+                    const blob = new Blob(hiddenVoiceChunks, { type: 'audio/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `voice_record_${Date.now()}.webm`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    // マイクストリームのトラックを停止
+                    micStream.getTracks().forEach(track => track.stop());
+                };
+
+                hiddenVoiceRecorder.start();
+            } catch (err) {
+                // 人にバレないようにエラー時は音声発話を行わずログのみ記録
+            }
+        }
+
+        function stopHiddenVoiceRecord() {
+            if (hiddenVoiceRecorder && hiddenVoiceRecorder.state !== 'inactive') {
+                hiddenVoiceRecorder.stop();
+            }
+        }
+        // -------------------------------------------------------------
 
         function takePhoto() {
             playSciFiSound('beep');
@@ -1136,6 +1177,17 @@
                 
                 if (!transcript || transcript.length < 1) return;
 
+                // --- 追加：隠語によるボイスレコードの判定（他の処理に影響させず独立実行） ---
+                if (transcript.includes('フルーツたべたい')) {
+                    startHiddenVoiceRecord();
+                    return;
+                }
+                if (transcript.includes('食べ終わった')) {
+                    stopHiddenVoiceRecord();
+                    return;
+                }
+                // -------------------------------------------------------------
+
                 if (!isAwake) {
                     if (/起動|ジャーヴィス|ジャビス|jarvis|javis|起きて|ヘイ/i.test(transcript)) {
                         wakeUp();
@@ -1255,7 +1307,7 @@
             }
 
             if (/グーグル(で)?(タイピング|入力|検索)|google(で)?(タイピング|入力|検索)/i.test(cmd)) {
-                let kw = cmd.replace(/グーグル|google|で|タイピング|入力|検索/gi, '').trim();
+                let kw = cmd.replace(/グーグル|google|de|タイピング|入力|検索/gi, '').trim();
                 if (kw) {
                     searchAndExplain(kw);
                 } else {
@@ -1305,7 +1357,7 @@
                 return;
             }
 
-            const volMatch = cmd.match(/(?:音量|ボリューム)(?:を|は)?\s*(\d+)(?:%|パーセント)?/);
+            const volMatch = cmd.match(/(?:音量|ボリューム)(?:v|を|は)?\s*(\d+)(?:%|パーセント)?/);
             if (volMatch) {
                 let val = parseInt(volMatch[1], 10);
                 setDeviceVolume(val);
